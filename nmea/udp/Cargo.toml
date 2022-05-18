@@ -1,0 +1,12 @@
+[package]
+name = "udp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pcap-parser = "0.13.3"
+etherparse = "0.10.1"
+
+[[bin]]
+name = "udp"
+path = "udp.rs"

@@ -30,7 +30,7 @@ class Hour:
 
     def add_minutes(self, minutes):
         """ Ajoute des minutes à une heure. """
-        return Hour(self.heures, self.minutes + int(minutes))
+        return Hour(self.heures, self.minutes + round(minutes))
 
 
 def read_token(prompt=None):

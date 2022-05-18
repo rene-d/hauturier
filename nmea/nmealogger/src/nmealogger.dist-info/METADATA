@@ -1,0 +1,10 @@
+Metadata-Version: 2.1
+Briefcase-Version: 0.3.6
+Name: nmealogger
+Formal-Name: NMEA Logger
+App-ID: com.example.nmealogger
+Version: 0.0.1
+Home-page: https://example.com/nmealogger
+Author: Jane Developer
+Author-email: jane@example.com
+Summary: My first application

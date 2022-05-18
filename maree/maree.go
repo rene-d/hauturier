@@ -158,7 +158,7 @@ func main() {
 				if cumul[i] <= nbDzInt && nbDzInt < cumul[i]+douzaines[i] {
 
 					delta := (float64(i) + (nbDz-float64(cumul[i]))/float64(douzaines[i])) * float64(hm)
-					h := h1.AddMinutes(int(delta) + decalageHeure)
+					h := h1.AddMinutes(int(math.Round(delta)) + decalageHeure)
 
 					fmt.Printf("heure marée à %.2f m : %v (heure %s)\n", m, h, nomHeure)
 					break

@@ -1,0 +1,1 @@
+Set of scripts to deal with onboard NMEA sentences
