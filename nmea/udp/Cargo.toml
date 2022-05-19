@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-pcap-parser = "0.13.3"
+pcap-parser = "0.14.0"
 etherparse = "0.10.1"
+structopt = "0.3.26"
+chrono = "0.4.19"
 
 [[bin]]
 name = "udp"
