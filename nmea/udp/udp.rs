@@ -1,28 +1,28 @@
 // udp.rs
 
 use chrono::{DateTime, Local, TimeZone};
+use clap::Parser;
 use etherparse::{SlicedPacket, TransportSlice};
 use pcap_parser::pcapng::Block;
 use pcap_parser::{create_reader, PcapBlockOwned, PcapError};
 use std::fs::File;
 use std::path::PathBuf;
 use std::str;
-use structopt::StructOpt;
 
-#[derive(StructOpt)]
-#[structopt(name = "udp", about = "An example of StructOpt usage.")]
-struct Opt {
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
     /// UDP port
-    #[structopt(short = "p", long = "port", default_value = "1456")]
+    #[clap(short, long, default_value_t = 1456)]
     port: u16,
 
     /// Input file
-    #[structopt(parse(from_os_str))]
+    #[clap(short, long)]
     input: PathBuf,
 }
 
 fn main() {
-    let opt = Opt::from_args();
+    let opt = Args::parse();
 
     let file = File::open(opt.input).expect("File open failed");
     let mut reader = create_reader(65536, file).unwrap();
@@ -40,9 +40,10 @@ fn main() {
                         let ts_sec = epb_ts / 1_000_000;
                         let ts_nanosec = 1000 * (epb_ts % 1_000_000);
 
-                        #[allow(clippy::cast_possible_wrap)]
-                        #[allow(clippy::cast_possible_truncation)]
-                        let dt: DateTime<Local> = Local.timestamp(ts_sec as i64, ts_nanosec as u32);
+                        let dt: DateTime<Local> = Local.timestamp(
+                            i64::try_from(ts_sec).unwrap(),
+                            u32::try_from(ts_nanosec).unwrap(),
+                        );
 
                         let timestamp = dt.format("%Y-%m-%dT%H:%M:%S%.6f");
 
