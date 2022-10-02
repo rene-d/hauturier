@@ -20,8 +20,8 @@ import requests
 
 class SPM:
     def __init__(self) -> None:
-        if Path("spm.json").is_file():
-            self.data = json.load(Path("spm.json").open())
+        if Path("data/spm.json").is_file():
+            self.data = json.load(Path("data/spm.json").open())
         else:
             self.data = {}
         self._harbors = None
@@ -33,12 +33,13 @@ class SPM:
         if self._harbors:
             return self._harbors
 
-        f = Path("harbors.xml")
+        f = Path("data/harbors.xml")
         if not f.is_file():
             url = "https://services.data.shom.fr/spm/listHarbors"
             headers = {"Accept": "*/*"}
             r = requests.get(url, headers=headers)
             r = r.content
+            f.parent.mkdir(exist_ok=True, parents=True)
             f.write_bytes(r)
         else:
             r = f.read_bytes()
@@ -95,7 +96,9 @@ class SPM:
             for k, v in hlt.items():
                 self.data[harbor]["hlt"][k] = v
 
-            json.dump(self.data, Path("spm.json").open("w"), indent=2)
+            Path("data/spm.json").parent.mkdir(exist_ok=True, parents=True)
+
+            json.dump(self.data, Path("data/spm.json").open("w"), indent=2)
 
         return harbor, date_ymd, self.data[harbor][service][date_ymd]
 

@@ -9,18 +9,18 @@
 # https://github.com/aendie/SFalmanac-Py3
 
 import datetime
-from pathlib import Path
 import json
-
-from skyfield.api import Loader, wgs84, Angle
-from skyfield import almanac
-from skyfield.searchlib import find_discrete, find_maxima
-from skyfield.nutationlib import iau2000b_radians
-import skyfield.jpllib
-import skyfield.timelib
-import requests
+from pathlib import Path
 from typing import Tuple, cast
 from urllib.parse import urlencode
+
+import requests
+import skyfield.jpllib
+import skyfield.timelib
+from skyfield import almanac
+from skyfield.api import Angle, Loader, wgs84
+from skyfield.nutationlib import iau2000b_radians
+from skyfield.searchlib import find_discrete, find_maxima
 
 
 def _angle_func(body, observer):
@@ -44,8 +44,10 @@ def load_kernel(spk) -> Tuple[skyfield.jpllib.SpiceKernel, skyfield.timelib.Time
 
 def ephem(latitude, longitude, city, date="now"):
 
-    if Path("cities.json").is_file():
-        cities = json.loads(Path("cities.json").read_text())
+    filename = Path("data/cities.json")
+
+    if filename.is_file():
+        cities = json.loads(filename.read_text())
     else:
         cities = {}
 
@@ -72,7 +74,8 @@ def ephem(latitude, longitude, city, date="now"):
             longitude, latitude = r["features"][0]["geometry"]["coordinates"]
 
             cities[city.lower()] = {"label": label, "longitude": longitude, "latitude": latitude}
-            Path("cities.json").write_text(json.dumps(cities, indent=2, ensure_ascii=False))
+            filename.parent.mkdir(exist_ok=True, parents=True)
+            filename.write_text(json.dumps(cities, indent=2, ensure_ascii=False))
             city = label
 
     else:
@@ -97,7 +100,8 @@ def ephem(latitude, longitude, city, date="now"):
                     longitude2, latitude2 = r["features"][0]["geometry"]["coordinates"]
 
             cities[f"{latitude},{longitude}"] = {"label": label, "longitude": longitude2, "latitude": latitude2}
-            Path("cities.json").write_text(json.dumps(cities, indent=4))
+            filename.parent.mkdir(exist_ok=True, parents=True)
+            filename.write_text(json.dumps(cities, indent=4))
             city = label
 
     # ephemeris, ts = load_kernel("de441.bsp")  # JPL Development Ephemeris, 1900 to 2050, 17 MB, issued in 2008

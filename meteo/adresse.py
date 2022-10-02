@@ -4,8 +4,9 @@
 Géolocalise une adresse avec https://adresse.data.gouv.fr/api-doc/adresse
 """
 
-from urllib.parse import urlencode
 import json
+from urllib.parse import urlencode
+
 import requests
 
 

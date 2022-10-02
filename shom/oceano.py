@@ -19,12 +19,13 @@ https://services.data.shom.fr/support/fr/tuto/oceanogramme
 https://services.data.shom.fr/support/fr/services/oceanogramme
 """
 
-import requests
-from pathlib import Path
-import webbrowser
-from urllib.parse import urlencode, quote
 import json
+import webbrowser
 from fnmatch import fnmatch
+from pathlib import Path
+from urllib.parse import quote, urlencode
+
+import requests
 
 
 class Spots:
@@ -37,7 +38,8 @@ class Spots:
             self._key_filter = lambda text: "".join(filter(str.isalpha, str(text).lower()))
             self._pattern_filter = lambda text: "".join(filter(lambda x: x.isalpha() or x in "*?", str(text).lower()))
 
-        f = Path(typename.split(":")[1]).with_suffix(".json")
+        f = Path("data") / typename.split(":")[1]
+        f = f.with_suffix(".json")
 
         if not f.is_file():
             url = "https://services.data.shom.fr/clevisu/wfs"
@@ -59,6 +61,7 @@ class Spots:
             if r.status_code != 200:
                 raise requests.HTTPError(r)
             data = r.json()
+            f.parent.mkdir(exist_ok=True, parents=True)
             f.write_bytes(r.content)
         else:
             data = json.load(f.open())

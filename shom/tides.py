@@ -8,9 +8,8 @@ from pathlib import Path
 
 from dateutil import tz
 
-from ephem import ephem
+from sun_ephem import ephem
 
-# from spm import SPM
 from hdm import SPM, Harbors
 from oceano import Oceano, Spots
 
@@ -67,8 +66,8 @@ class Tides:
 
     def ephem(self, latitude, longitude, date):
         if self.cache is None:
-            if Path("ephem.json").is_file():
-                self.cache = json.loads(Path("ephem.json").read_bytes())
+            if Path("data/ephem.json").is_file():
+                self.cache = json.loads(Path("data/ephem.json").read_bytes())
             else:
                 self.cache = {}
 
@@ -86,7 +85,8 @@ class Tides:
             }
         }
         self.cache[key] = w
-        Path("ephem.json").write_text(json.dumps(self.cache, indent=2))
+        Path("data/ephem.json").parent.mkdir(exist_ok=True, parents=True)
+        Path("data/ephem.json").write_text(json.dumps(self.cache, indent=2))
         return w
 
     def day(self, harbor, date_ymd: datetime, show_harbour=True):
@@ -223,7 +223,7 @@ class Tides:
 
         for day in range(count):
             d = date_ymd + timedelta(days=day)
-            wl = self.spm.wl(harbor, d)
+            _,_,wl = self.spm.wl(harbor, d)
             for time, height in wl:
                 self.add(f"({d.strftime('%Y-%m-%d')} {time}, {height})")
 
@@ -319,9 +319,9 @@ top=10mm,
 
 if __name__ == "__main__":
     t = Tides()
-    t.plot("BREST", "2022-09-26", standalone=True, count=6)
+    t.plot("BREST", "2022-09-30", standalone=True, count=6)
     t.save("brest.tex")
 
     t = Tides()
-    t.nav("2022-09-26", 3, ["ROSCOFF"])
+    t.nav("2022-10-28", 3, ["ROSCOFF"])
     t.save("nav.tex")

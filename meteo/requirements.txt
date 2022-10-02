@@ -1,2 +1,4 @@
 meteofrance-api
 tabulate
+defusedxml
+requests

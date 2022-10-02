@@ -152,17 +152,15 @@ def main(
         for i, track in enumerate(merged.tracks, 1):
             linestring = kml.newlinestring(name=f"track{i}")
             if elevation and track.segments[0].points[0].elevation:
-                coords = [
-                    (point.longitude, point.latitude, point.elevation)
-                    for segment in track.segments
-                    for point in segment.points
-                ]
+                coords = [(point.longitude, point.latitude, point.elevation) for segment in track.segments for point in segment.points]
                 linestring.coords = coords
                 linestring.altitudemode = simplekml.AltitudeMode.absolute
             else:
                 coords = [(point.longitude, point.latitude) for segment in track.segments for point in segment.points]
                 linestring.coords = coords
                 linestring.altitudemode = simplekml.AltitudeMode.clamptoground
+            linestring.style.linestyle.width = 6
+            linestring.style.linestyle.color = ["7fff0000", "7f0000ff", "7f00ff00"][(i - 1) % 3]
 
         kml.save(f"{output_name}.kml")
 

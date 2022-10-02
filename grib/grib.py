@@ -248,7 +248,7 @@ class MeteoFrance(GribFile):
 
     def get_latest_runs(model):
         if model == "AROME":
-            runs = [0, 3, 6, 12, 18]
+            runs = [0, 3, 6, 12]
         else:
             runs = [0, 6, 12, 18]
         utc_now = datetime.datetime.utcnow()
