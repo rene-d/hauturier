@@ -5,7 +5,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from urllib import request
+import zipfile
 
+import requests
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,17 +17,40 @@ from grib import MeteoFrance
 from scipy.ndimage import zoom
 from shapely.geometry import Point, Polygon
 
+import io
+
 # ------------------------------------------------------------------------------------------------
+
+
+def get_ne_maps(data_dir: Path):
+    # https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-0-countries/
+
+    if (data_dir / "ne_10m_admin_0_countries.shp").is_file():
+        return
+
+    r = requests.get(
+        "https://www.naturalearthdata.com/http//www.naturalearthdata.com/download/10m/cultural/ne_10m_admin_0_countries.zip",
+        headers={"user-agent": "curl/7.79.1"},
+        allow_redirects=True,
+    )
+
+    zip = zipfile.ZipFile(io.BytesIO(r.content), mode="r")
+    for f in zip.filelist:
+        zip.extract(f, path=data_dir)
+
+
+#
 
 HD = True
 
-a = MeteoFrance(model="Arome", HD=HD, time="17H")
+a = MeteoFrance(model="Arome", HD=HD, echeance="17H")
 grib = pygrib.open(a.local_filename)
 
 message = grib.select(name="10 metre U wind component")[0]
 print(message)
 
-reference_time = datetime.datetime(message.year, message.month, message.day, message.hour, message.minute)
+reference_time = a.reference_time
+echeance = a.echeance
 
 # le 10ème item du premier grib
 # 10:10 metre U wind component:m s**-1 (instant):regular_ll:heightAboveGround:level 10 m:fcst time 2 hrs:from 202208271800
@@ -38,7 +64,7 @@ y = np.linspace(lats.min(), lats.max(), shape[0])  # shape[0] == nombre de ligne
 X, Y = np.meshgrid(x, y)
 
 ######
-land_sea = MeteoFrance(model="Arome_static", HD=HD).open()
+land_sea = MeteoFrance(model="Arome", static=True, HD=HD).open()
 land_sea_mask = np.copy(land_sea.select(name="Land-sea mask")[0].values[::-1])
 ######
 
@@ -52,8 +78,8 @@ U = zoom(U, (shape[0] / U.shape[0], shape[1] / U.shape[1]))
 V = zoom(V, (shape[1] / V.shape[0], shape[1] / V.shape[1]))
 
 
-# https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-0-countries/
 # world = gpd.read_file("data/GSHHS_shp/f/GSHHS_f_L1.shp")
+get_ne_maps(Path("data"))
 world = gpd.read_file("data/ne_10m_admin_0_countries.shp")
 
 harbor = Point(-4.497736, 48.406435)  # brest
@@ -111,6 +137,6 @@ ax.barbs(X, Y, U * 1.852, V * 1.852, length=7, barbcolor="b", flagcolor="r", lin
 
 france.geometry.boundary.plot(ax=ax, color=None, edgecolor="k", linewidth=2, alpha=0.25)
 
-ax.set_title(f"run - ref {reference_time.isoformat()}")
+ax.set_title(f"run - ref {reference_time} - time {echeance}")
 
 plt.savefig("wind.png")

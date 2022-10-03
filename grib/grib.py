@@ -2,6 +2,10 @@
 
 import datetime
 import gzip
+import json
+import logging
+import os
+import time
 from argparse import ArgumentParser
 from collections import defaultdict
 from email.utils import parsedate_to_datetime
@@ -10,18 +14,33 @@ from pathlib import Path
 from types import BuiltinFunctionType, MethodWrapperType
 from urllib.parse import unquote, urlencode
 
+import eccodes
 import pygrib
 import pytz
 import requests
+from dateutil.parser import parse as parsedate
 
 
 class GribFile:
+    """
+    A grib file, URL or local file.
+    """
+
     data_dir = Path("data")
 
     def __init__(self, filename, url=None, no_check=False):
+        """
+        Initialize a grib file.
+
+        `filename` local filename or remote url resource.
+        `url` optional url for remote resource, `filename` has to be a local filename in this case.
+        `no_check` if True, never check the remote file and do not create the timestamp file.
+        """
         self.no_check = no_check
         if isinstance(filename, str) and filename.startswith("https:") or filename.startswith("http:"):
-            assert url is None
+            # assert url is None
+            if url is not None:
+                raise ValueError(f"url should be None")
             self.filename = self.data_dir / Path(filename).name
             self.url = filename
         elif url:
@@ -32,19 +51,25 @@ class GribFile:
             self.url = None
 
     def open(self):
+        """
+        Open the grib, return the object.
+        """
         grib = pygrib.open(self.local_filename)
         grib.seek(0)
         return grib
 
     def __str__(self):
+        """
+        Return a string representing the grib: filename and the optional url.
+        """
         return f"{self.filename} {self.url}"
 
     def info_ecccodes(self, details=False):
-
-        import eccodes
+        """
+        Displays some info with ecccodes library.
+        """
 
         print(self.url or self.filename)
-
         with eccodes.FileReader(self.local_filename) as reader:
             for message in reader:
                 print(
@@ -52,13 +77,8 @@ class GribFile:
                         map(
                             str,
                             (
-                                # message["centreDescription"],
-                                # message["centre"],
-                                # message["discipline"],
-                                # message["parameterCategory"],
-                                # message["parameterNumber"],
-                                # message["parameterUnits"],
-                                # message["parameterName"],
+                                # message["centreDescription"], message["centre"], message["discipline"], message["parameterCategory"],
+                                # message["parameterNumber"], message["parameterUnits"], message["parameterName"],
                                 message["name"],
                                 message["units"],
                                 message["validityDate"],
@@ -69,7 +89,9 @@ class GribFile:
                 )
 
     def info(self, details=False):
-
+        """
+        Show grib messages (layers).
+        """
         print(self.filename)
 
         grib = self.open()
@@ -114,9 +136,13 @@ class GribFile:
 
     @property
     def local_filename(self):
+        """
+        Obtain a local filename for the grib, by downloading the remote resource if necessary.
+        Also expand compressed files.
+        """
         if self.url:
             filename = self.filename
-            ts = filename.with_name("." + filename.name + ".timestamp")
+            timestamp_file = filename.with_name("." + filename.name + ".timestamp")
 
             if filename.suffix in [".gz"]:
                 uncompress = filename.suffix
@@ -127,36 +153,45 @@ class GribFile:
             if filename.is_file():
                 if self.no_check:
                     return filename
-                if ts.is_file():
-                    print(f"\033[0;34mcheck {self.url}\033[0m")
+                if timestamp_file.is_file():
+                    logging.info(f"\033[0;34mcheck {self.url}\033[0m")
                     r = requests.head(self.url)
                     mark = self.url + "\n" + r.headers["Last-Modified"].strip()
-                    if mark == ts.read_text():
+                    if mark == timestamp_file.read_text():
                         return filename
 
-            print(f"\033[0;33mdownload {self.url}\033[0m")
+            logging.info(f"\033[0;33mdownload {self.url}\033[0m")
             r = requests.get(self.url)
-            if r.status_code == 200:
-                filename.parent.mkdir(parents=True, exist_ok=True)
+            r.raise_for_status()
 
-                if uncompress == ".gz":
-                    filename.write_bytes(gzip.decompress(r.content))
-                else:
-                    filename.write_bytes(r.content)
+            filename.parent.mkdir(parents=True, exist_ok=True)
 
+            if uncompress == ".gz":
+                filename.write_bytes(gzip.decompress(r.content))
+            else:
+                filename.write_bytes(r.content)
+
+            if not self.no_check:
                 mark = self.url + "\n" + r.headers["Last-Modified"].strip()
-                ts.write_text(mark)
+                timestamp_file.write_text(mark)
 
-                return filename
+            if "Last-Modified" in r.headers:
+                url_date = parsedate(r.headers["Last-Modified"])
+                logging.debug(url_date)
+                mtime = round(url_date.timestamp() * 1_000_000_000)
+                os.utime(filename, ns=(mtime, mtime))
+                if not self.no_check:
+                    os.utime(timestamp_file, ns=(mtime, mtime))
 
-            raise FileNotFoundError(filename.name)
+            return filename
 
         return Path(self.filename)
 
 
 class MeteoFrance(GribFile):
     """
-    https://donneespubliques.meteofrance.fr/donnees_libres/Static/CacheDCPC_NWP.json
+    Arpège: https://donneespubliques.meteofrance.fr/?fond=produit&id_produit=130&id_rubrique=51
+    Arome: https://donneespubliques.meteofrance.fr/?fond=produit&id_produit=131&id_rubrique=51
     """
 
     # nomsSsPaquets = {
@@ -175,37 +210,25 @@ class MeteoFrance(GribFile):
 
     token = "__5yLVTdr-sGeHoPitnFc7TZ6MhBcJxuSsoZp6y0leVHU__"
 
-    def __init__(self, reference_time=None, time=0, model="Arome", HD=True, package="SP1", **kwargs):
+    def __init__(self, reference_time=None, echeance=0, model="Arome", HD=True, package="SP1", static=False, **kwargs):
 
+        # validate the parameters
         model = model.upper()
+        grid, echeance = MeteoFrance.get_model_parameters(model, HD, echeance, package)
 
         # Champs constants (relief et masque terre-mer)
-        if model.endswith("STATIC"):
-            model = model[:-6].rstrip("_").upper()
-
-            grid, _, _ = MeteoFrance.get_model_parameters(model, HD)
-
+        if static:
             url = f"https://donneespubliques.meteofrance.fr/donnees_libres/Static/gribsConstants/{model}_{grid}_CONSTANT.grib"
             return super().__init__(url, no_check=True)
 
-        # date du run
+        # date du run: doit être au format ISO8601
         if not reference_time:
-            reference_time = MeteoFrance.get_latest_runs(model)[0]
-        elif not isinstance(reference_time, datetime.datetime):
-            reference_time = datetime.datetime.fromisoformat(reference_time)
+            reference_time = self.get_latest_run(model, package, grid, echeance)
 
-        grid, valid_ranges, packages = MeteoFrance.get_model_parameters(model, HD)
-
-        if package not in packages:
-            raise ValueError(package)
-
-        if isinstance(time, int):
-            for i in valid_ranges:
-                if i.startswith(f"{time:02d}H"):
-                    time = i
-                    break
-        if time not in valid_ranges:
-            raise ValueError(time)
+        self.reference_time = reference_time
+        self.echeance = echeance
+        self.package = package
+        self.grid = grid
 
         url = "http://dcpc-nwp.meteo.fr/services/PS_GetCache_DCPCPreviNum?"
         query = {
@@ -213,58 +236,99 @@ class MeteoFrance(GribFile):
             "model": model,
             "grid": grid,
             "package": package,
-            "time": time,
-            "referencetime": reference_time.isoformat() + "Z",
+            "time": echeance,
+            "referencetime": reference_time,
             "format": "grib2",
         }
 
-        d = datetime.datetime.fromisoformat(reference_time.isoformat())
-        d = f"{d.year}{d.month:02d}{d.day:02d}{d.hour:02d}{d.minute:02d}"
+        reftime = datetime.datetime.fromisoformat(reference_time.replace("Z", "+00:00"))
+        short_reftime = reftime.strftime("%Y%m%d%H%M")
 
-        filename = f"W_fr-meteofrance,MODEL,{model}+{grid.replace('.','')}+{package}+{time}_C_LFPW_{d}--.grib2"
+        filename = f"W_fr-meteofrance,MODEL,{model}+{grid.replace('.','')}+{package}+{echeance}_C_LFPW_{short_reftime}--.grib2"
 
-        super().__init__(filename, url + urlencode(query), **kwargs)
+        logging.debug(f"{model} {grid} {package} {echeance} {reftime.strftime('%Y-%m-%d %H UTC')}")
+        logging.debug(f"filename {filename}")
 
-    def get_model_parameters(model, HD):
+        super().__init__(filename, url + urlencode(query), no_check=True, **kwargs)
+
+    def get_model_parameters(model, HD, echeance, package):
+        """
+        Validates parameters for AROME and ARPEGE models.
+        """
+
         if model == "ARPEGE" and HD:
             grid = "0.1"
-            valid_ranges = ["00H12H", "13H24H", "25H36H", "37H48H", "49H60H", "61H72H", "73H84H", "85H96H", "97H102H", "103H114H"]
+            valid_echeances = ["00H12H", "13H24H", "25H36H", "37H48H", "49H60H", "61H72H", "73H84H", "85H96H", "97H102H", "103H114H"]
             packages = ["HP1", "HP2", "IP1", "IP2", "IP3", "IP4", "SP1", "SP2"]
+
         elif model == "ARPEGE" and not HD:
             grid = "0.5"
-            valid_ranges = ["00H24H", "27H48H", "51H72H", "75H102H", "105H114H"]
+            valid_echeances = ["00H24H", "27H48H", "51H72H", "75H102H", "105H114H"]
             packages = ["HP1", "HP2", "IP1", "IP2", "IP3", "IP4", "SP1", "SP2"]
+
         elif model == "AROME" and HD:
             packages = ["HP1", "SP1", "SP2", "SP3"]
-            valid_ranges = [f"{i:02d}H" for i in range(43)]
+            valid_echeances = [f"{i:02d}H" for i in range(43)]
             grid = "0.01"
+
         elif model == "AROME" and not HD:
             packages = ["HP1", "HP2", "HP3", "IP1", "IP2", "IP3", "IP4", "IP5", "SP1", "SP2", "SP3"]
-            valid_ranges = ["00H06H", "07H12H", "13H18H", "19H24H", "25H30H", "31H36H", "36H42H"]
+            valid_echeances = ["00H06H", "07H12H", "13H18H", "19H24H", "25H30H", "31H36H", "36H42H"]
             grid = "0.025"
+
         else:
-            raise ValueError(model)
-        return (grid, valid_ranges, packages)
+            raise ValueError(f"unknown model {model}")
 
-    def get_latest_runs(model):
-        if model == "AROME":
-            runs = [0, 3, 6, 12]
+        # check the package name
+        if package not in packages:
+            raise ValueError(f"unknown package {package} for model {model}")
+
+        # check the echeance (int or the actual string)
+        if isinstance(echeance, int):
+            for i in valid_echeances:
+                if i.startswith(f"{echeance:02d}H"):
+                    echeance = i
+                    break
+        if echeance not in valid_echeances:
+            raise ValueError(f"bad time: {echeance}")
+
+        return (grid, echeance)
+
+    def get_latest_run(self, model, package, grid, echeance):
+        """
+        Get the most recent run date for the model.
+        """
+
+        f = self.data_dir / "CacheDCPC_NWP.json"
+        if f.is_file() and time.time() - f.stat().st_mtime < 1800:
+            logging.debug(f"load cached {f.stem}")
+            r = json.loads(f.read_bytes())
         else:
-            runs = [0, 6, 12, 18]
-        utc_now = datetime.datetime.utcnow()
-        i = max(i for i, v in enumerate(runs) if v <= utc_now.hour)
+            url = "https://donneespubliques.meteofrance.fr/donnees_libres/Static/CacheDCPC_NWP.json"
+            r = requests.get(url)
+            r.raise_for_status()
+            f.parent.mkdir(exist_ok=True, parents=True)
+            f.write_bytes(r.content)
+            logging.debug(f"write {f.stem}")
+            r = r.json()
 
-        latest = utc_now.replace(hour=runs[i], minute=0, second=0, microsecond=0)
-        all_latest = [latest]
+        # the JSON contains nested dictionaries for all models, all packages and all echeance times.
+        for i in r:
+            if i["modele"] == model and i["grille"] == grid:
+                for j in i["refPacks"]:
+                    if j["codePack"] == package:
+                        for k in j["refGrpEchs"]:
+                            if k["echeance"] == echeance:
+                                return sorted(k["refReseauxDispos"])[-1]
 
-        for j in range(4):
-            delta = runs[i] - runs[(i - j - 1) % len(runs)]
-            all_latest.append(latest - datetime.timedelta(hours=delta))
-
-        return all_latest
+        raise ValueError(f"no last run for {model},{package},{grid},{echeance}")
 
 
 class MeteoConsult(GribFile):
+    """
+    WIP
+    """
+
     def __init__(self, zone, current=False, **kwargs):
         class MeteoConsultGribs(HTMLParser):
             zones = set()
@@ -330,32 +394,42 @@ class MeteoConsult(GribFile):
 if __name__ == "__main__":
     parser = ArgumentParser(description="grib downloader")
     parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument("--mc", type=str, help="Meteo Consult Marine")
-    parser.add_argument("--currents", action="store_true", help="currents (Meteo Consult)")
+    parser.add_argument("-d", "--details", action="store_true", help="show some grib details")
 
-    parser.add_argument("-a", "--arome", action="store_true", help="Meteo France AROME")
-    parser.add_argument("-g", "--arpege", action="store_true", help="Meteo France ARPEGE")
-    parser.add_argument("--hd", action="store_true", help="HD (Meteo France)")
-    parser.add_argument("-t", "--time", type=int, help="time (Meteo France)", default=0)
+    # parser.add_argument("--mc", type=str, help="Meteo Consult Marine")
+    # parser.add_argument("--currents", action="store_true", help="currents (Meteo Consult)")
+
+    parser.add_argument("-a", "--arome", action="store_true", help="Meteo France AROME (modèle haute résolution) paquet SP1")
+    parser.add_argument("-g", "--arpege", action="store_true", help="Meteo France ARPEGE (modèle global) paquet SP1")
+    parser.add_argument("--hd", action="store_true", help="grille haute définition (Meteo France)")
+    parser.add_argument("-t", "--time", dest="echeance", type=int, help="échéance (Meteo France)", default=0)
 
     parser.add_argument("grib", nargs="?")
     args = parser.parse_args()
 
+    if args.verbose:
+        logging.basicConfig(format="%(asctime)s:%(levelname)s:%(message)s", level=logging.DEBUG, datefmt="%H:%M:%S")
+
     grib = None
-    if args.mc:
-        grib = MeteoConsult(args.mc, args.currents)
+    # if args.mc or args.currents:
+    #     grib = MeteoConsult(args.mc, args.currents)
 
-    elif args.arome:
-        grib = MeteoFrance(package="SP1", model="AROME", time=args.time, no_check=True, HD=args.hd)
+    try:
 
-    elif args.arpege:
-        grib = MeteoFrance(package="SP1", model="ARPEGE", time=args.time, no_check=True, HD=args.hd)
+        if args.arome:
+            grib = MeteoFrance(package="SP1", model="AROME", echeance=args.echeance, HD=args.hd)
 
-    elif args.grib:
-        grib = GribFile(args.grib)
+        elif args.arpege:
+            grib = MeteoFrance(package="SP1", model="ARPEGE", echeance=args.echeance, HD=args.hd)
+
+        elif args.grib:
+            grib = GribFile(args.grib)
+
+    except Exception as e:
+        parser.error(f"could not open grib")
 
     if grib:
-        grib.info(details=args.verbose)
+        grib.info(details=args.details)
 
     # MeteoFrance(package="SP1", time="00H", no_check=True).info()
     # MeteoFrance(package="SP1", time="42H").info()
