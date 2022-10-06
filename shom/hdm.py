@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlencode, urlsplit
 
 import defusedxml.ElementTree as ET
 import requests
+import rapidfuzz
 
 
 def get_hdm_urls():
@@ -185,13 +186,7 @@ class SPM:
 
 
 class WFS:
-    def __init__(self, typename, property_key=None, filename=None, exact=True) -> None:
-
-        if exact:
-            self._key_filter = lambda text: text.lower()
-        else:
-            # isalpha_or_pattern = lambda x: str.isalpha(x) or x == "*" or x == "?"
-            self._key_filter = lambda text: "".join(filter(str.isalpha, str(text).lower()))
+    def __init__(self, typename, access_key=None, filename=None) -> None:
 
         if filename:
             f = Path(filename)
@@ -228,36 +223,54 @@ class WFS:
         self.features = {}
         self.items = {}
         for feature in data["features"]:
-            if property_key:
+            if access_key:
                 properties = feature["properties"]
-                self.items[self._key_filter(properties[property_key])] = properties
+                self.items[properties[access_key]] = properties
             else:
-                self.items[self._key_filter(feature["id"])] = feature
+                self.items[feature["id"]] = feature
 
     def __getitem__(self, key):
-        return self.items.get(self._key_filter(key))
+        return self.items.get(key)
 
     def __iter__(self):
         return iter(self.items.items())
 
-    def keys(self, pattern=None):
-        if pattern:
-            return [k for k in self.items.keys() if fnmatch(str(k), pattern.lower())]
-        else:
-            return self.items.keys()
+    def keys(
+        self,
+    ):
+        return self.items.keys()
 
-    def filter(self, pattern):
-        return [v for k, v in self.items.items() if fnmatch(k, pattern.lower())]
+    def find(self, pattern):
+        lean = lambda text: "".join(filter(str.isalpha, text.lower()))
+
+        if "*" in pattern:
+            pattern = "".join(filter(lambda c: str.isalpha(c) or c == "*", pattern.lower()))
+            for k, v in self.items.items():
+                if fnmatch(lean(k), pattern):
+                    yield k, v
+        else:
+            best_d = 0.15
+            best_kv = None
+            for k, v in self.items.items():
+                d = rapidfuzz.distance.JaroWinkler.distance(k, pattern, processor=lean)
+                if d == 0:
+                    yield k, v
+                    return
+                elif d <= best_d:
+                    best_d = d
+                    best_kv = (k, v)
+            if best_kv:
+                yield best_kv
 
 
 class Harbors(WFS):
     def __init__(self, **args):
-        super().__init__(typename="SPM_PORTS_WFS:liste_ports_spm_h2m", property_key="cst", **args)
+        super().__init__(typename="SPM_PORTS_WFS:liste_ports_spm_h2m", access_key="cst", **args)
 
 
 class Zones(WFS):
     def __init__(self, **args):
-        super().__init__(typename="H2M_ZONES_WFS:zones_h2m_20160126", property_key="zone_fr", **args)
+        super().__init__(typename="H2M_ZONES_WFS:zones_h2m_20160126", access_key="zone_fr", **args)
 
 
 if __name__ == "__main__":
@@ -271,14 +284,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.harbors or args.zones:
-        l = Harbors(exact=False) if args.harbors else Zones(leexact=False)
+        l = Harbors() if args.harbors else Zones()
         if args.harbor:
-            r = l.keys(args.harbor)
+            r = list(l.find(args.harbor))
             if len(r) == 1:
-                for k, v in l[r[0]].items():
+                k, v = r[0]
+                print(k)
+                for k, v in v.items():
                     print(f"{k:>16} : {v}")
             else:
-                print("\n".join(r))
+                for k, _ in r:
+                    print(k)
     elif args.url:
         print(get_hdm_urls())
     else:

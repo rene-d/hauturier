@@ -85,21 +85,24 @@ def ephem(latitude, longitude, city, date="now"):
         else:
             print(f"querying for position {latitude},{longitude}")
 
+            # # https://nominatim.org/release-docs/develop/api/Reverse/
+            # r = requests.get(
+            #     f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=jsonv2&addressdetails=0&extratags=0&namedetails=0&zoom=10"
+            # )
+            # r.raise_for_status()
+            # r = r.json()
+            # label = r.get("name", "none")
+
             label = "none"
-            longitude2, latitude2 = longitude, latitude
-
             r = requests.get(f"https://api-adresse.data.gouv.fr/reverse/?lon={longitude}&lat={latitude}")
-            if r.status_code != 200:
-                print(f"Erreur: {r.status_code}")
+            r.raise_for_status()
+            r = r.json()
+            if "features" not in r or len(r["features"]) == 0:
+                print(f"Error: {latitude},{longitude} not found")
             else:
-                r = r.json()
-                if "features" not in r or len(r["features"]) == 0:
-                    print(f"Error: not found")
-                else:
-                    label = r["features"][0]["properties"]["label"]
-                    longitude2, latitude2 = r["features"][0]["geometry"]["coordinates"]
+                label = r["features"][0]["properties"]["label"]
 
-            cities[f"{latitude},{longitude}"] = {"label": label, "longitude": longitude2, "latitude": latitude2}
+            cities[f"{latitude},{longitude}"] = {"label": label, "longitude": longitude, "latitude": latitude}
             filename.parent.mkdir(exist_ok=True, parents=True)
             filename.write_text(json.dumps(cities, indent=4))
             city = label

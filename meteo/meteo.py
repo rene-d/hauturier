@@ -11,6 +11,7 @@ import defusedxml.ElementTree as ET
 import requests
 from meteofrance_api.session import MeteoFranceSession
 from tabulate import tabulate
+import rapidfuzz
 
 import adresse
 
@@ -150,27 +151,52 @@ class MeteoFranceMarine:
         return iter(pois)
 
 
+def find_poi(harbor):
+    if not harbor:
+        return
+
+    latlon = re.match(r"^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$", harbor)
+    if latlon:
+        return {"lat": latlon[1], "lng": latlon[2]}
+
+    best_d = 1
+    best_poi = None
+    for poi in MeteoFranceMarine.pois():
+        d = rapidfuzz.distance.JaroWinkler.distance(poi["title"], harbor, processor=str.lower)
+        if d < best_d:
+            best_d = d
+            best_poi = poi
+            if d == 0:
+                break
+
+    if best_d <= 0.1:
+        print(f"POI {best_d} {best_poi}")
+        return best_poi
+
+    pos = adresse.search(harbor)
+    if not pos:
+        return
+
+    # petite précaution
+    d = rapidfuzz.distance.JaroWinkler.distance(pos["city"], harbor, processor=str.lower)
+    if d > 0.1:
+        print(f"{pos['city']} too far from {harbor} ({d:.3f})")
+        # return
+
+    print(f"ADRESSE: {pos}")
+    return {"lat": pos["lat"], "lng": pos["lon"]}
+
+
 def show_harbor(harbor, tablefmt):
     """
     Affiche les prévisions pour un port ou une position
     """
 
     if harbor:
-        harbor2 = harbor.replace(" ", "").lower()
-        for poi in MeteoFranceMarine.pois():
-            if poi["title"].replace(" ", "").lower() == harbor2:
-                print(f"POI: {poi}")
-                break
-        else:
-            latlon = re.match(r"^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$", harbor)
-            if latlon:
-                poi = {"lat": latlon[1], "lng": latlon[2]}
-            else:
-                pos = adresse.search(harbor)
-                if not pos:
-                    return
-                print(f"ADRESSE: {pos}")
-                poi = {"lat": pos["lat"], "lng": pos["lon"]}
+        poi = find_poi(harbor)
+        if not poi:
+            print(f"{harbor} not found")
+            return
 
         mfm = MeteoFranceMarine()
         marine_forecast = mfm.get_forecast_marine(poi["lat"], poi["lng"])
