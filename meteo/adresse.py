@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 import requests
 
 
-def search(city):
+def search(city, verbose=False):
     query = urlencode(
         {"q": city, "type": "municipality", "limit": 1, "autocomplete": 0},
         doseq=True,
@@ -22,13 +22,14 @@ def search(city):
         return
 
     r = r.json()
-    if "features" not in r:
-        print(f"Error: {city} not found")
+    if "features" not in r or len(r["features"]) == 0:
+        print(f"\033[3mError: {city} not found\033[0m")
         return
 
     feature = r["features"][0]
     properties = feature["properties"]
-    # print(json.dumps(feature, indent=2, ensure_ascii=False))
+    if verbose:
+        print(f"\033[2m{json.dumps(feature, indent=2, ensure_ascii=False)}\033[0m")
     longitude, latitude = feature["geometry"]["coordinates"]
     return {
         "lat": latitude,
@@ -39,8 +40,7 @@ def search(city):
     }
 
 
-def reverse(lat: float, lon: float):
-
+def reverse(lat: float, lon: float, verbose=False):
     # curl "https://api-adresse.data.gouv.fr/reverse/?lon=2.37&lat=48.357"
 
     r = requests.get(f"https://api-adresse.data.gouv.fr/reverse/?lon={lon}&lat={lat}")
@@ -48,9 +48,15 @@ def reverse(lat: float, lon: float):
         print(f"Erreur: {r.status_code}")
         return
 
+    r = r.json()
+    if "features" not in r or len(r["features"]) == 0:
+        print(f"\033[3mError: {lat},{lon} not found\033[0m")
+        return
+
     feature = r["features"][0]
     properties = feature["properties"]
-    # print(json.dumps(feature, indent=2, ensure_ascii=False))
+    if verbose:
+        print(f"\033[2m{json.dumps(feature, indent=2, ensure_ascii=False)}\033[0m")
     longitude, latitude = feature["geometry"]["coordinates"]
     return {
         "lat": latitude,
@@ -65,7 +71,12 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose")
     parser.add_argument("q", help="Query")
     args = parser.parse_args()
 
-    print(search(args.q))
+    try:
+        lat, lon = map(float, args.q.split(",", maxsplit=2))
+        print(reverse(lat, lon, verbose=args.verbose))
+    except ValueError:
+        print(search(args.q, verbose=args.verbose))

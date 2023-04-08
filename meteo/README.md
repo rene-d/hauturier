@@ -1,10 +1,10 @@
 # meteo
 
-Récupération des informations de [météo marine](https://meteofrance.com/meteo-marine) publiée par Métép France.
+Récupération des informations de [météo marine](https://meteofrance.com/meteo-marine) publiée par Météo France.
 
 ## Description API Météo France
 
-Il y a plusieurs endpoints (non documentés) utilisés dans la page web.
+Il y a plusieurs endpoints (non documentés, donc à la pérennité incertaine) utilisés dans la page web.
 
 Prévisions à 7 jours d'un port ou d'une localisation:
 

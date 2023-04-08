@@ -53,10 +53,10 @@ def get_settings(large=False):
     """
 
     if large:
-        f = Path("settings_large.json")
+        f = Path("data/large.json")
         url = "https://meteofrance.com/meteo-marine/large"
     else:
-        f = Path("settings.json")
+        f = Path("data/meteo.json")
         url = "https://meteofrance.com/meteo-marine"
 
     if f.is_file():
@@ -228,7 +228,9 @@ def show_harbor(harbor, tablefmt):
 
     headers = ["time", "kt", "Bf", "wind", "sea"]
 
-    print(f"{fmt_time(marine_forecast['update_time'])} {properties['zone']}  {properties['name']}  {properties['insee']}")
+    print(
+        f"{fmt_time(marine_forecast['update_time'])} {properties['zone']}  {properties['name']}  {properties['insee']}"
+    )
 
     print(tabulate(data, headers, tablefmt=tablefmt))
 
@@ -308,7 +310,6 @@ def show_bm(zone, special, large, tablefmt):
     r = ET.fromstring(bm)
 
     def p(node, indent=0):
-
         text = node.text
         if text:
             text = text.strip()
@@ -331,7 +332,6 @@ def show_bm(zone, special, large, tablefmt):
 
 
 def show_special(large):
-
     mfm = MeteoFranceMarine()
     if large:
         warnings = mfm.get_warning(1, True) + mfm.get_warning(2, True) + mfm.get_warning(3, True)
@@ -386,7 +386,10 @@ if __name__ == "__main__":
         if args.list:
             list_zones(large, args.tablefmt)
         elif not args.harbor:
-            show_special(large)
+            if special:
+                show_special(large)
+            else:
+                print("missing zone")
         else:
             show_bm(args.harbor, special, large, args.tablefmt)
     else:
