@@ -86,7 +86,6 @@ class Spots:
 
 
 class Oceano:
-
     TEMPERATURE_AT_SURFACE = 1
     SALINITY_AT_SURFACE = 2
     WIND_WAVES = 4
@@ -124,7 +123,7 @@ class Oceano:
         else:
             raise ValueError("spot or (lat,lon)")
 
-        url += f"&lang=fr"
+        url += "&lang=fr"
         if self.parameters:
             url += "&parameters=" + quote(",".join(self.parameters))
 

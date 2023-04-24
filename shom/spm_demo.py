@@ -87,7 +87,7 @@ class SPM:
             url = f"https://services.data.shom.fr/{SPM_KEY}/spm/wl?harborName={harbor}&duration=7&date={date_ymd}&utc=standard&nbWaterLevels=288"
             wl = requests.get(url, headers=headers).json()
 
-            if not harbor in self.data:
+            if harbor not in self.data:
                 self.data[harbor] = {"hlt": {}, "wl": {}, "coeff": {}}
 
             for k, v in wl.items():

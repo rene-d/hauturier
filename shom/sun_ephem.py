@@ -152,7 +152,7 @@ if __name__ == "__main__":
     try:
         latlon = args.harbor.split(",", 1)
         lat, lon = float(latlon[0]), float(latlon[1])
-    except ValueError as _:
+    except ValueError:
         e = ephem(0, 0, args.harbor, args.date)
     else:
         e = ephem(lat, lon, None, args.date)

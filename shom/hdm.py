@@ -3,7 +3,7 @@
 """
 Service de Prédictions de Marées / HDM
 
-Documentation API: https://services.data.shom.fr/spm/doc/#0-2
+Documentation approximative API: https://services.data.shom.fr/spm/doc/#0-2
 """
 
 import configparser
@@ -150,7 +150,6 @@ class SPM:
         }
 
         if harbor not in self.data or date_ymd not in self.data[harbor]["hlt"]:
-
             time.sleep(random.random() % 3)
 
             print(f"download spm for harbor {harbor} date {date_ymd} correlation {correlation}")
@@ -169,7 +168,7 @@ class SPM:
             url = f"{HDM_SERVICE_URL}/spm/wl?harborName={harbor}&duration=7&date={date_ymd}&utc=standard&nbWaterLevels=288"
             wl = requests.get(url, headers=headers).json()
 
-            if not harbor in self.data:
+            if harbor not in self.data:
                 self.data[harbor] = {"hlt": {}, "wl": {}, "coeff": {}}
 
             for k, v in wl.items():
@@ -187,7 +186,6 @@ class SPM:
 
 class WFS:
     def __init__(self, typename, access_key=None, filename=None) -> None:
-
         if filename:
             f = Path(filename)
         else:
@@ -241,7 +239,8 @@ class WFS:
         return self.items.keys()
 
     def find(self, pattern):
-        lean = lambda text: "".join(filter(str.isalpha, text.lower()))
+        def lean(text):
+            return "".join(filter(str.isalpha, text.lower()))
 
         if "*" in pattern:
             pattern = "".join(filter(lambda c: str.isalpha(c) or c == "*", pattern.lower()))
@@ -284,9 +283,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.harbors or args.zones:
-        l = Harbors() if args.harbors else Zones()
+        names = Harbors() if args.harbors else Zones()
         if args.harbor:
-            r = list(l.find(args.harbor))
+            r = list(names.find(args.harbor))
             if len(r) == 1:
                 k, v = r[0]
                 print(k)
