@@ -20,8 +20,10 @@ import defusedxml.ElementTree as ET
 import requests
 import rapidfuzz
 
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6.1 Safari/605.1.15"  # noqa
 
-def get_hdm_urls():
+
+def get_hdm_urls(verbose=False):
     """
     Affiche l'URL du service HDM trouvé dans la page web.
     Non documenté par le SHOM.
@@ -30,9 +32,12 @@ def get_hdm_urls():
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9",
         "Host": "maree.shom.fr",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6.1 Safari/605.1.15",
+        "User-Agent": USER_AGENT,
     }
     r = requests.get("https://maree.shom.fr", headers=headers)
+
+    if verbose:
+        Path("maree.html").write_bytes(r.content)
 
     class HdmConfig(HTMLParser):
         """Extract the config structure."""
@@ -48,11 +53,17 @@ def get_hdm_urls():
 
     parser = HdmConfig()
     parser.feed(r.text)
-    # Path("config.json").write_text(json.dumps(parser.config, indent=2))
+    if verbose:
+        Path("config.json").write_text(json.dumps(parser.config, indent=2))
     wfs_url = parser.config.get("wfsHarborUrl")
     if wfs_url:
         p = urlsplit(wfs_url)
-        wfs_url = f"{p.scheme}://{p.netloc}/{p.path}"
+        wfs_url = f"{p.scheme}://{p.netloc}{p.path}"
+
+    assert parser.config.get("wlEndpoint") == "/spm/wl"
+    assert parser.config.get("hltEndpoint") == "/spm/hlt"
+    assert parser.config.get("coeffEndpoint") == "/spm/coeff"
+
     return parser.config.get("hdmServiceUrl"), wfs_url
 
 
@@ -145,7 +156,7 @@ class SPM:
             "Origin": "https://maree.shom.fr",
             "Accept": "*/*",
             "Host": "services.data.shom.fr",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6.1 Safari/605.1.15",
+            "User-Agent": USER_AGENT,
             "Referer": "https://maree.shom.fr/",
         }
 
@@ -156,16 +167,16 @@ class SPM:
 
             # if correlation == "1":
             #     date_ym1 = date_ymd[:-2]+"01"
-            #     url = f"{HDM_SERVICE_URL}/spm/coeff?harborName={harbor}&duration=365&date={date_ym1}&utc=1&correlation=1"
+            #     url = f"{HDM_SERVICE_URL}/spm/coeff?harborName={harbor}&duration=365&date={date_ym1}&utc=1&correlation=1"  # noqa
             #     coeff = requests.get(url, headers=headers).json()
             #     # retourne un tableau sur l'année avec les coefficients pm de chaque jour
 
             HDM_SERVICE_URL, _ = _get_keys()
 
-            url = f"{HDM_SERVICE_URL}/spm/hlt?harborName={harbor}&duration=7&date={date_ymd}&utc=standard&correlation={correlation}"
+            url = f"{HDM_SERVICE_URL}/spm/hlt?harborName={harbor}&duration=7&date={date_ymd}&utc=standard&correlation={correlation}"  # noqa
             hlt = requests.get(url, headers=headers).json()
 
-            url = f"{HDM_SERVICE_URL}/spm/wl?harborName={harbor}&duration=7&date={date_ymd}&utc=standard&nbWaterLevels=288"
+            url = f"{HDM_SERVICE_URL}/spm/wl?harborName={harbor}&duration=7&date={date_ymd}&utc=standard&nbWaterLevels=288"  # noqa
             wl = requests.get(url, headers=headers).json()
 
             if harbor not in self.data:
@@ -207,7 +218,7 @@ class WFS:
                 "Accept": "application/json, text/javascript, */*; q=0.01",
                 "Origin": "https://maree.shom.fr",
                 "Host": "services.data.shom.fr",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6.1 Safari/605.1.15",
+                "User-Agent": USER_AGENT,
                 "Referer": "https://maree.shom.fr/",
             }
 
@@ -276,6 +287,7 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose")
     parser.add_argument("-u", "--url", action="store_true", help="Print hdm service and WFS urls.")
     parser.add_argument("-H", "--harbors", action="store_true", help="Fetch the list of harbors.")
     parser.add_argument("-Z", "--zones", action="store_true", help="Fetch the list of zones.")
@@ -295,7 +307,7 @@ if __name__ == "__main__":
                 for k, _ in r:
                     print(k)
     elif args.url:
-        print(get_hdm_urls())
+        print(get_hdm_urls(args.verbose))
     else:
         a = SPM()
         try:
