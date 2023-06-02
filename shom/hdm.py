@@ -4,6 +4,7 @@
 Service de Prédictions de Marées / HDM
 
 Documentation approximative API: https://services.data.shom.fr/spm/doc/#0-2
+PDF: https://services.data.shom.fr/static/help/Aide-en-ligne_DATA-SHOM-FR.pdf
 """
 
 import configparser

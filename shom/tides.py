@@ -168,7 +168,6 @@ class Tides:
         self.add(r"\end{tabular}")
 
     def plot(self, harbor, date_ymd: datetime, count=1, standalone=False):
-
         if isinstance(date_ymd, str):
             date_ymd = datetime.strptime(date_ymd, "%Y-%m-%d")
 
@@ -223,7 +222,7 @@ class Tides:
 
         for day in range(count):
             d = date_ymd + timedelta(days=day)
-            _,_,wl = self.spm.wl(harbor, d)
+            _, _, wl = self.spm.wl(harbor, d)
             for time, height in wl:
                 self.add(f"({d.strftime('%Y-%m-%d')} {time}, {height})")
 
@@ -260,8 +259,8 @@ class Tides:
 \usepackage{tgbonum}
 \usepackage{geometry}
 \geometry{
-a4paper,
-total={190mm,277mm},
+% a3paper, total={380mm,277mm},
+a4paper, total={190mm,277mm},
 left=10mm,
 top=10mm,
 }
