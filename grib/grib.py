@@ -54,7 +54,7 @@ class GribFile:
         """
         Open the grib, return the object.
         """
-        grib = pygrib.open(self.local_filename)
+        grib = pygrib.open(self.local_filename.as_posix())
         grib.seek(0)
         return grib
 

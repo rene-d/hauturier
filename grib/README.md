@@ -1,5 +1,12 @@
 # Gribs
 
+## Installation of pygrib
+
+```shell
+brew install ecccodes
+ECCODES_DIR=/opt/homebrew/ pip3 install pygrib
+```
+
 ## Grib sources
 
 ### Meteo France
@@ -14,7 +21,8 @@
 
 ### Weather 4D
 
-- http://grib.weather4d.com
+- http://grib.weather4d.com/MyOcean
+- http://grib.weather4d.com/AromeHD
 
 ### Private / alternatives souces
 
@@ -42,3 +50,4 @@
 
 - Docker: `docker build -t wgrib2 . && docker run --rm wgrib2`
 - macOS: `FC=gfortran-11 CC=gcc-11 make USE_JASPER=0 USE_NETCDF3=0`
+
