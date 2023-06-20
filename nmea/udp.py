@@ -25,7 +25,7 @@ def main(filename, output):
 
     for p in rdpcap(filename):
         u = p / IP() / UDP()
-        if u.sport == 1456 and u.len > 0:
+        if u.sport == 11101 and u.len > 0:
             s = u.load.decode()
             for line in s.splitlines():
                 timestamp = datetime.fromtimestamp(float(p.time)).isoformat()

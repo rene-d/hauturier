@@ -7,7 +7,7 @@ import os
 def main():
     t = Tides()
     t.nav(
-        "2023-06-15",
+        "2023-06-16",
         3,
         [
             "BREST",
