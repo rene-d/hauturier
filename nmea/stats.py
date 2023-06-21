@@ -3,11 +3,10 @@
 # NMEA reference: https://gpsd.gitlab.io/gpsd/NMEA.html
 # AIS info: https://gpsd.gitlab.io/gpsd/AIVDM.html
 
-import simplekml
-from pathlib import Path
-import click
 from collections import defaultdict
+from pathlib import Path
 
+import click
 
 TALKER_IDS = {
     "GP": "Global Positioning System",
@@ -41,13 +40,17 @@ SENTENCES = {
     "VHW": "Water Speed and Heading",
     "DTM": "Datum Reference",
     "VWT": "True Wind Speed and Angle",
+    "BWR": "Bearing and Distance to Waypoint - Rhumb Line",
+    "RMB": "Recommended Minimum Navigation Information",
+    "BOD": "Bearing - Waypoint to Waypoint",
+    "XTE": "Cross-Track Error, Measured",
+    "APB": 'Autopilot Sentence "B"',
 }
 
 
 @click.command(help="Stats trames NMEA")
 @click.argument("filename")
 def main(filename):
-
     filename = Path(filename)
 
     talker_ids = defaultdict(int)

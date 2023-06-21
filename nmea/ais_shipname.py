@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 
 from operator import itemgetter
-import pyais
+
 import click
+import pyais
 
 
-@click.command(help="AIS")
+@click.command(help="Extrait les shipnames de trames NMEA AIS")
 @click.option("-a", "--all", "all_mmsi", help="toutes les données", is_flag=True)
 @click.argument("filename")
 def main(all_mmsi, filename):
-
     multipart_ais = None
     ships = {}
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-import pyais
-import click
-import simplekml
 import json
+
+import click
+import pyais
+import simplekml
 
 
 @click.command(help="AIS")
@@ -12,7 +13,6 @@ import json
 @click.option("--json", "flag_json", help="json output", is_flag=True)
 @click.argument("filename")
 def main(mmsi, flag_gps, flag_json, filename):
-
     multipart_ais = None
     coords = []
     first = True

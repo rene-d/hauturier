@@ -1,0 +1,4 @@
+# E501 line length violations
+# F401 imported but unused
+# F841 assigned to but never used
+ignore = ["E501", "F401", "F841"]

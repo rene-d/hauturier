@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 
-from scapy.all import rdpcap, IP, UDP
-from pathlib import Path
-import click
+
+import logging
+
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR + 1)
+
 import sys
 from datetime import datetime
+from pathlib import Path
+
+import click
+from scapy.all import IP, UDP, rdpcap
 
 
-@click.command(help="Extrait les trames UDP sport 1456 d'une capture")
+@click.command(help="Extrait les trames UDP port 11101 d'une capture (scapy version)")
 @click.argument("filename")
 @click.argument("output", default="")
 def main(filename, output):
-
     if output == "-":
         out = sys.stdout
         print("output to stdout", file=sys.stderr)

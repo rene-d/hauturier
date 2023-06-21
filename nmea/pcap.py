@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
-import struct
-from pathlib import Path
-import click
 import logging
+import struct
 from datetime import datetime
+from pathlib import Path
+
+import click
 
 
 def hexdump(data, print_function=print):
@@ -99,19 +100,17 @@ def parse_epb(block):
     logging.debug(f"    MAC {eth_ntoa(mac_src)} → {eth_ntoa(mac_dest)} proto {proto:04x}")
 
     if proto == 0x0800:
-
         ip_header = struct.unpack(">BBHHHBBH4s4s", data[14:34])
         assert ip_header[0] // 16 == 0x4  # IPv4 header
 
         if ip_header[6] == 17:  # IPPROTO_UDP
-
             assert ip_header[0] == 0x45  # IP header sans extension, 20 octets
 
             saddr = ipv4_ntoa(ip_header[8])
             daddr = ipv4_ntoa(ip_header[9])
 
             sport, dport, length, checksum = struct.unpack(">HHHH", data[34:42])
-            if sport == 1456:
+            if sport == 11101:
                 logging.debug(f"    UDP {saddr}:{sport} → {daddr}:{dport} length {length}")
                 for line in data[42 : 42 + length - 8].decode().splitlines():
                     print(timestamp, line)
@@ -139,11 +138,10 @@ def parse_dpeb(block):
         logging.debug(f"    DPEB type={option_type}, length={option_length}, {option_value}")
 
 
-@click.command(help="Extrait les trames UDP sport 1456 d'une capture")
+@click.command(help="Extrait les trames UDP port 11101 d'une capture (Python version)")
 @click.argument("filename")
 @click.argument("output", default="")
 def main(filename, output):
-
     p = Path(filename).open("rb")
 
     magic = p.read(4)
@@ -154,7 +152,7 @@ def main(filename, output):
         logging.debug("pcapng file")
     else:
         # https://tools.ietf.org/id/draft-gharris-opsawg-pcap-00.html
-        logging.error("pcap file")
+        logging.error(f"pcap file (magic 0x{magic:04x})")
         exit(2)
 
     while True:

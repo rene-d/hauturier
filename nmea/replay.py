@@ -19,10 +19,10 @@ def read_file(filename):
     else:
         for p in rdpcap(filename):
             u = p / IP() / UDP()
-            if u.sport == 1456 and u.len > 0:
+            if u.sport == 11101 and u.len > 0:
                 yield p.time, u.load
 
-    yield 2 ** 63 - 1, b""
+    yield 2**63 - 1, b""
 
 
 def nmea_checksum(sentence):
@@ -34,7 +34,6 @@ def nmea_checksum(sentence):
 
 
 def update_date(now, sentence):
-
     sentence = sentence.rstrip()
 
     if sentence[3:6] == b"RMC":
@@ -72,14 +71,13 @@ def update_date(now, sentence):
 
 @click.command(help="Rejoue les trames NMEA")
 @click.option("-b", "--broadcast", is_flag=True, help="Envoyer les trames en broadcast")
-@click.option("-p", "--port", type=int, default=1456, help="Port UDP")
+@click.option("-p", "--port", type=int, default=11101, help="Port UDP")
 @click.option("-a", "--address", type=str, default="localhost", help="Adresse de destination")
 @click.option("-i", "--info", "opt_info", is_flag=True, help="Afficher les informations")
 @click.option("-r", "--range", "opt_range", type=str, default=0, help="Numéro de plage")
 @click.option("-s", "--speed", "opt_speed", type=click.IntRange(1, 10), default=1, help="Vitesse de rejeu")
 @click.argument("filename")
 def main(broadcast, port, address, opt_info, opt_range, opt_speed, filename):
-
     # ouvre la socket pour envoyer les trames
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
@@ -140,12 +138,10 @@ def main(broadcast, port, address, opt_info, opt_range, opt_speed, filename):
     nb = 0
 
     for ptime, data in read_file(filename):
-
         if debut == 0:
             debut = ptime
         else:
             if ptime - fin > 120:
-
                 if opt_info:
                     print(
                         f"plage {plage:2} :",
@@ -167,7 +163,6 @@ def main(broadcast, port, address, opt_info, opt_range, opt_speed, filename):
         if len(plages) != 0:
             for r in plages:
                 if plage == r[0] or r[0] == 0:  # matche le numéro de plage
-
                     timestamp_orig = datetime.fromtimestamp(float(ptime))
                     minutes = timestamp_orig.hour * 60 + timestamp_orig.minute
 

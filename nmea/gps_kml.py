@@ -2,10 +2,11 @@
 
 # NMEA reference: https://gpsd.gitlab.io/gpsd/NMEA.html
 
-import simplekml
-from pathlib import Path
-import click
 import sys
+from pathlib import Path
+
+import click
+import simplekml
 
 
 def wgs84_angle(a, sign):
@@ -14,11 +15,10 @@ def wgs84_angle(a, sign):
     return -a if sign == "S" or sign == "W" else a
 
 
-@click.command(help="Extrait la trace GPS")
+@click.command(help="Extrait la trace GPS au format KML")
 @click.argument("filename")
 @click.argument("output", default="")
 def main(filename, output):
-
     filename = Path(filename)
 
     if output == "-":
