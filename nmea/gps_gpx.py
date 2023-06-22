@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 
 import click
-import simplekml
+import gpxpy
+import gpxpy.gpx
 
 
 def wgs84_angle(a, sign):
@@ -15,22 +16,27 @@ def wgs84_angle(a, sign):
     return -a if sign == "S" or sign == "W" else a
 
 
-@click.command(help="Extrait la trace GPS d'une capture NMEA au format KML")
-@click.argument("filename")
+@click.command(help="Extrait la trace GPS d'une capture NMEA au format GPX")
+@click.argument("filename", type=Path)
 @click.argument("output", default="")
-def main(filename, output):
-    filename = Path(filename)
-
+def main(filename, output: Path):
     if output == "-":
         print("output to stdout", file=sys.stderr)
     else:
         if output == "":
-            output = Path(filename).with_suffix(".kml")
+            output = Path(filename).with_suffix(".gpx")
         else:
             output = Path(output)
         print(f"output to {output}")
 
-    coords = []
+    # gpx file/track/segment
+    gpx = gpxpy.gpx.GPX()
+
+    gpx_track = gpxpy.gpx.GPXTrack()
+    gpx.tracks.append(gpx_track)
+
+    gpx_segment = gpxpy.gpx.GPXTrackSegment()
+    gpx_track.segments.append(gpx_segment)
 
     for line in filename.open():
         _, nmea = line.split(" ", 1)
@@ -38,18 +44,12 @@ def main(filename, output):
             f = nmea.split(",")
             latitude = wgs84_angle(f[1], f[2])
             longitune = wgs84_angle(f[3], f[4])
-            coords.append((longitune, latitude))
-
-    kml = simplekml.Kml(open=1)
-    linestring = kml.newlinestring(name=f"{filename.stem}")
-
-    linestring.coords = coords
-    linestring.altitudemode = simplekml.AltitudeMode.clamptoground
+            gpx_segment.points.append(gpxpy.gpx.GPXTrackPoint(latitude, longitune))
 
     if output == "-":
-        kml.save("/dev/stdout")
+        sys.stdout.write(gpx.to_xml())
     else:
-        kml.save(output)
+        output.write_text(gpx.to_xml())
 
 
 if __name__ == "__main__":
