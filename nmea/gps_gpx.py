@@ -43,8 +43,8 @@ def main(filename, output: Path):
         if nmea.startswith("$YDGLL"):
             f = nmea.split(",")
             latitude = wgs84_angle(f[1], f[2])
-            longitune = wgs84_angle(f[3], f[4])
-            gpx_segment.points.append(gpxpy.gpx.GPXTrackPoint(latitude, longitune))
+            longitude = wgs84_angle(f[3], f[4])
+            gpx_segment.points.append(gpxpy.gpx.GPXTrackPoint(latitude, longitude))
 
     if output == "-":
         sys.stdout.write(gpx.to_xml())

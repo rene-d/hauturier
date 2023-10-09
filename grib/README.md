@@ -49,5 +49,4 @@ ECCODES_DIR=/opt/homebrew/ pip3 install pygrib
 ### wgrib2
 
 - Docker: `docker build -t wgrib2 . && docker run --rm wgrib2`
-- macOS: `FC=gfortran-11 CC=gcc-11 make USE_JASPER=0 USE_NETCDF3=0`
-
+- macOS: `FC=gfortran-13 CC=gcc-13 make USE_JASPER=0 USE_NETCDF3=0 USE_PROJ4=0`

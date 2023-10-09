@@ -247,7 +247,7 @@ class Tides:
         if standalone:
             self.add(r"""\end{document}""")
 
-    def nav(self, start, count, stages):
+    def nav(self, start, count, stages, landscape=False):
         print(f"nav {start} {count} jours")
 
         start = datetime.strptime(start, "%Y-%m-%d")
@@ -264,6 +264,10 @@ a4paper, total={190mm,277mm},
 left=10mm,
 top=10mm,
 }
+
+\usepackage{lscape}
+
+
 \usepackage{pgfplots}
 \pgfplotsset{compat = newest}
 \usepgfplotslibrary{dateplot}
@@ -286,9 +290,13 @@ top=10mm,
 \setlength\LTright{0pt}
 
 \begin{document}
+
 %{\fontfamily{qcr}\selectfont
 """
         )
+
+        if landscape:
+            self.add(r"\begin{landscape}")
 
         def _add(stage):
             nonlocal start, count
@@ -313,6 +321,10 @@ top=10mm,
         self.add(r"\end{longtable} ")
 
         self.add(r"%}")
+
+        if landscape:
+            self.add(r"\end{landscape}")
+
         self.add(r"\end{document}")
 
 
