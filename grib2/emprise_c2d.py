@@ -14,6 +14,9 @@ from c2d import *
 import geopandas as gpd
 from shapely import Point
 import sqlite3
+import numpy as np
+from scipy.spatial import Delaunay
+import matplotlib.pyplot as plt
 
 # %%
 iDirectionIncrementInDegrees = 0.003369
@@ -33,7 +36,7 @@ class Limites:
         )
 
         self.shp_file = (
-            "./Limite_terre_mer_facade_Manche_Atlantique/SHAPE/Limite_terre-mer_facade_Manche_Atlantique_polygone.shp"
+            "././Limite_terre_mer_departement_29/SHAPE/Limite_terre-mer_departement_29_polygone.shp"
         )
         self.gdf = None
 
@@ -133,16 +136,50 @@ while lon <= lon_max + iDirectionIncrementInDegrees:
 
 # %%
 
+D=3
+p=[]
 for i, (longitude, latitude, u, v) in enumerate(points):
     if lon_min <= longitude <= lon_max and lat_min <= latitude <= lat_max:
         x, y = to_xy(longitude, latitude)
+        p.append((x,y))
+
+        draw.rectangle((x - D, y - D, x + D, y + D), fill="red", outline="red")
         # draw.rectangle((x - 1, y - 1, x + 1, y + 1), fill="red", outline="red")
         # draw.rectangle((x - D, y - D, x + D, y + D), fill=None, outline="red")
         # draw.text((x, y), str(i), fill="black", font=font, anchor="mm")
 
+mpoints=np.array(p)
+tri = Delaunay(mpoints)
 
+for t in tri.simplices:
+    xa,ya=mpoints[t[0]]
+    xb,yb=mpoints[t[1]]
+    xc,yc=mpoints[t[2]]
+
+    draw.line([(xa,ya),(xb,yb)], fill="green", width=2)
+    draw.line([(xb,yb),(xc,yc)], fill="green", width=2)
+    draw.line([(xa,ya),(xc,yc)], fill="green", width=2)
+
+im
 # %%
-
 # im.show()
 im.save("emprise.png")
-imgcat.imgcat(im, height=20)
+# imgcat.imgcat(im, height=20)
+
+
+im
+
+
+#%%
+mpoints=np.array(p)
+tri = Delaunay(mpoints)
+plt.triplot(mpoints[:,0], mpoints[:,1], tri.simplices)
+plt.plot(mpoints[:,0], mpoints[:,1], 'o')
+plt.show()
+
+
+# %%
+im
+# %%
+plt
+# %%
