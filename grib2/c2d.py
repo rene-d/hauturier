@@ -5,9 +5,7 @@ import pyproj
 from PIL import Image, ImageDraw, ImageFont
 import geopy.distance
 import numpy as np
-
-iDirectionIncrementInDegrees = 0.003369
-jDirectionIncrementInDegrees = 0.002253
+import math
 
 # ED50 Lambert Zone I   : https://epsg.io/27571
 # RGF93 Lambert 93      : https://epsg.io/2154
@@ -62,10 +60,35 @@ def minmax(points):
     return x_min, y_min, x_max, y_max
 
 
-def c2d_reader():
+def interpolate(coeff, heure, ve, me):
+    heure += 6
+    heure_floor = math.floor(heure)
+    heure_ceil = math.ceil(heure)
+    p = heure_ceil - heure
+
+    # interpolation sur l'heure de vive eaux
+    ve_u = ve[0][heure_floor] * p + ve[0][heure_ceil] * (1 - p)
+    ve_v = ve[1][heure_floor] * p + ve[1][heure_ceil] * (1 - p)
+
+    # interpolation sur l'heure de morte eau
+    me_u = me[0][heure_floor] * p + me[0][heure_ceil] * (1 - p)
+    me_v = me[1][heure_floor] * p + me[1][heure_ceil] * (1 - p)
+
+    # interpolation sur le coefficient
+    u = me_u + (coeff - 45) * (ve_u - me_u) / 50
+    v = me_v + (coeff - 45) * (ve_v - me_v) / 50
+
+    return u, v
+
+
+def c2d_reader(coeff, heure):
     """
     Retourne les coordonnées et les courants des points d'un atlas de courants de surface.
     """
+
+    assert 20 <= coeff <= 120
+    assert -6 <= heure <= 6
+
     f = Path("RADE_BREST_560")
     lines = f.read_text().splitlines()
 
@@ -74,19 +97,16 @@ def c2d_reader():
         latitude = to_angle(coordinates[0:9])
         longitude = to_angle(coordinates[9:18])
 
-        if not -4.447403 <= longitude <= -4.38406:
-            continue
-        if not     48.362636 <= latitude <=     48.40744:
-            continue
-
         ve = to_uv(lines[i + 1])
         me = to_uv(lines[i + 2])
 
-        yield longitude, latitude, ve, me
+        u, v = interpolate(coeff, heure, ve, me)
+
+        yield longitude, latitude, u, v
 
 
 def get():
-    points = list(c2d_reader())
+    points = list(c2d_reader(95, -6))
 
     lon_min, lat_min, lon_max, lat_max = minmax(map(itemgetter(0, 1), points))
 
@@ -99,16 +119,54 @@ def get():
 
     x = np.array(list(map(itemgetter(0), points)))
     y = np.array(list(map(itemgetter(1), points)))
-
-    VIVE_EAU = 2
-    MORTE_EAU = 3
-    U = 0
-    V = 1
-    HEURE_AV6 = 0
-    HEURE_PM = 6
-    HEURE_AP6 = 12
-
-    u = np.array(list(map(lambda m: m[U][0], map(itemgetter(VIVE_EAU), points))))
-    v = np.array(list(map(lambda m: m[V][0], map(itemgetter(VIVE_EAU), points))))
+    u = np.array(list(map(itemgetter(2), points)))
+    v = np.array(list(map(itemgetter(3), points)))
 
     return x, y, u, v
+
+
+def mesures():
+    points = list(c2d_reader())
+
+    proj = pyproj.Proj("EPSG:3857")  # web mercator
+    proj = pyproj.Proj("EPSG:3395")  # world mercator
+    proj = pyproj.Proj("EPSG:2154")  # RGF93 Lambert 93
+    proj = pyproj.Proj("EPSG:27571")  # ED50 Lambert Zone I
+    proj = pyproj.Proj("EPSG:4326")  # WGS84
+
+    def dist(p1, p2):
+        if proj.name == "longlat":
+            lon1, lat1 = p1
+            lon2, lat2 = p2
+            return geopy.distance.distance((lat1, lon1), (lat2, lon2))
+        else:
+            x1, y1 = p1
+            x2, y2 = p2
+            return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
+
+    points = [proj(lon, lat) for lon, lat, _, _ in points]
+
+    print("espacement moyen horizontal (sur un parallèle):")
+    p1 = points[271]
+    p2 = points[296]
+    print("", p1, p2, dist(p1, p2) / 25)
+
+    print("espacement moyen vertical (sur un méridien):")
+    p1 = points[477]
+    p2 = points[136]
+    print("", p1, p2, dist(p1, p2) / 16)
+
+
+if __name__ == "__main__":
+    me = (
+        [1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    )
+
+    ve = (
+        [2, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [2, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    )
+
+    u, v = interpolate(20, -6, ve, me)
+    print(u, v)

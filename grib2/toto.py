@@ -11,6 +11,10 @@ import c2d
 import scipy.interpolate
 
 
+iDirectionIncrementInDegrees = 0.003369
+jDirectionIncrementInDegrees = 0.002253
+
+
 # %%
 
 
@@ -32,8 +36,8 @@ ax.scatter(x, y, u, c="b")
 
 # %%
 
-xs = np.arange(x.min(), x.max(), c2d.iDirectionIncrementInDegrees)
-ys = np.arange(y.min(), y.max(), c2d.jDirectionIncrementInDegrees)
+xs = np.arange(x.min(), x.max(), iDirectionIncrementInDegrees)
+ys = np.arange(y.min(), y.max(), jDirectionIncrementInDegrees)
 
 xnew, ynew = np.meshgrid(xs, ys)
 xnew = xnew.flatten()
