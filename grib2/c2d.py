@@ -1,21 +1,10 @@
 from operator import itemgetter
 from pathlib import Path
-import imgcat
 import pyproj
-from PIL import Image, ImageDraw, ImageFont
 import geopy.distance
 import numpy as np
 import math
 
-# ED50 Lambert Zone I   : https://epsg.io/27571
-# RGF93 Lambert 93      : https://epsg.io/2154
-# WGS84                 : https://epsg.io/4326
-# WGS84 Pseudo-Mercator : https://epsg.io/3857
-
-
-proj = pyproj.Proj("EPSG:3857")  # world mercator
-# proj = pyproj.Proj("EPSG:3395")  # world mercator
-# proj=pyproj.Proj("EPSG:2154") # RGF93 Lambert 93
 
 
 def to_angle(s: str):
@@ -81,7 +70,7 @@ def interpolate(coeff, heure, ve, me):
     return u, v
 
 
-def c2d_reader(coeff, heure):
+def c2d_reader(coeff, heure, atlas="RADE_BREST_560"):
     """
     Retourne les coordonnées et les courants des points d'un atlas de courants de surface.
     """
@@ -89,8 +78,8 @@ def c2d_reader(coeff, heure):
     assert 20 <= coeff <= 120
     assert -6 <= heure <= 6
 
-    f = Path("RADE_BREST_560")
-    lines = f.read_text().splitlines()
+    atlas = Path(atlas)
+    lines = atlas.read_text().splitlines()
 
     for i in range(1, len(lines), 3):
         coordinates = lines[i]
@@ -105,7 +94,11 @@ def c2d_reader(coeff, heure):
         yield longitude, latitude, u, v
 
 
-def get():
+def get_not_used():
+    proj = pyproj.Proj("EPSG:3857")  # world mercator
+    # proj = pyproj.Proj("EPSG:3395")  # world mercator
+    proj = pyproj.Proj("EPSG:2154")  # RGF93 Lambert 93
+
     points = list(c2d_reader(95, -6))
 
     lon_min, lat_min, lon_max, lat_max = minmax(map(itemgetter(0, 1), points))
