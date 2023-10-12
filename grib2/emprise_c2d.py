@@ -11,14 +11,13 @@ from pathlib import Path
 import imgcat
 import pyproj
 from PIL import Image, ImageDraw, ImageFont
-import geopy.distance
 import requests
 from c2d import *
 import geopandas as gpd
 from shapely import Point, Polygon, MultiPolygon
 import sqlite3
 import numpy as np
-from scipy.spatial import Delaunay
+from scipy.spatial import Delaunay, KDTree
 import matplotlib.pyplot as plt
 
 # %%
@@ -36,8 +35,8 @@ class Limites:
             "create unique index if not exists limites_idx on limites (lon,lat);"
         )
 
-        self.shp_file = Path("./Limite_terre_mer_departement_29/SHAPE/Limite_terre-mer_departement_29_polygone.shp")
-        # self.shp_file = Path("./Limite_terre_mer_facade_Manche_Atlantique/SHAPE/Limite_terre-mer_facade_Manche_Atlantique_polygone.shp")
+        self.shp_name = "Limite_terre_mer_departement_29"
+        # self.shp_name = "Limite_terre_mer_facade_Manche_Atlantique"
 
         self._gdf = None
         self.clip = None
@@ -48,8 +47,10 @@ class Limites:
     @property
     def gdf(self) -> gpd.GeoSeries:
         if self._gdf is None:
-            self.ensure_shp_file()
+            if not self.ensure_shp_file():
+                raise Exception(f"fichier shp {self.shp_name} non trouvé")
             print("lecture", self.shp_file)
+
             self._gdf = gpd.read_file(self.shp_file)
             self._gdf = self._gdf.to_crs(epsg=4326)
             if self.clip is not None:
@@ -72,21 +73,29 @@ class Limites:
 
         return earth
 
+    @property
+    def shp_file(self):
+        shapes = list((Path(self.shp_name) / "SHAPE").glob("*_polygone.shp"))
+        if len(shapes) == 1 and shapes[0].is_file():
+            return shapes[0]
+        return None
+
     def ensure_shp_file(self):
-        if self.shp_file.exists():
-            return
+        if self.shp_file is not None:
+            return True
 
-        shp = "Limite_terre_mer_departement_29"
-
-        print("téléchargement", shp)
+        print("téléchargement", self.shp_name)
 
         url = "https://services.data.shom.fr/x13f1b4faeszdyinv9zqxmx1/telechargement/prepackageGroup/LIMTM_PACK_DL/prepackage/{shp}/file/{shp}.7z"
-        url = url.format(shp=shp)
+        url = url.format(shp=self.shp_name)
 
         r = requests.get(url, headers={"referer": "https://diffusion.shom.fr"})
         r.raise_for_status()
-        Path(f"{shp}.7z").write_bytes(r.content)
-        subprocess.run(["7z", "x", f"{shp}.7z"], check=True)
+        Path(f"{self.shp_name}.7z").write_bytes(r.content)
+
+        subprocess.run(["7z", "x", "-y", f"{self.shp_name}.7z"], check=True)
+
+        return self.shp_file is not None
 
 
 limites = Limites()
@@ -131,7 +140,7 @@ x_max, y_max = proj_img_merc(*proj_lambert93(lon_max, lat_max))
 print(proj_lambert93.name, proj_lambert93.crs, "→", x_min, y_min, x_max, y_max)
 
 
-R = 2000 / (x_max - x_min)
+R = 5000 / (x_max - x_min)
 D = 10
 
 x_min -= 3 * D / R
@@ -168,6 +177,7 @@ font = ImageFont.truetype("Roboto-Regular.woff2", 30)
 # %%
 
 points_on_earth = []
+points_on_sea = []
 
 
 def draw_point_on_earth():
@@ -189,6 +199,8 @@ def draw_point_on_earth():
 
                 x, y = to_xy(lon, lat)
                 draw.rectangle((x - 1, y - 1, x + 1, y + 1), fill=color, outline=color)
+
+                points_on_sea.append(proj_lambert93(lon, lat))
 
             lat += jDirectionIncrementInDegrees
 
@@ -217,6 +229,7 @@ def is_point_in_triangle(p, p1, p2, p3):
 # %%
 
 tri_points = []
+tri_points_uv = []
 
 for i, (longitude, latitude, u, v) in enumerate(points):
     if lon_min <= longitude <= lon_max and lat_min <= latitude <= lat_max:
@@ -224,6 +237,7 @@ for i, (longitude, latitude, u, v) in enumerate(points):
         x, y = proj_lambert93(longitude, latitude)
 
         tri_points.append((x, y))
+        tri_points_uv.append((u, v))
 
         x, y = to_img(x, y)
         draw.rectangle((x - 3, y - 3, x + 3, y + 3), fill="red", outline="red")
@@ -231,12 +245,13 @@ for i, (longitude, latitude, u, v) in enumerate(points):
 tri_points = np.array(tri_points)
 tri = Delaunay(tri_points)
 
+
 # récupère le trait de côte et convertit en coordonnées Lambert 93
 gdf = limites.gdf.to_crs(proj_lambert93.crs.srs)
 
 for poly in gdf.geometry:
-    if poly.is_empty:
-        continue
+    # if poly.is_empty:
+    #     continue
 
     if isinstance(poly, Polygon):
         poly = [to_img(x, y) for x, y in poly.exterior.coords]
@@ -270,8 +285,9 @@ for i, t in enumerate(tri.simplices):
         if area > 2000:
             continue
         else:
-            x, y = to_img((xa + xb + xc) / 3, (ya + yb + yc) / 3)
-            draw.text((x, y), str(round(area)), fill="black", font=font, anchor="mm")
+            # x, y = to_img((xa + xb + xc) / 3, (ya + yb + yc) / 3)
+            # draw.text((x, y), str(round(area)), fill="black", font=font, anchor="mm")
+            pass
 
     tri_ok[i] = True
 
@@ -284,5 +300,66 @@ for i, t in enumerate(tri.simplices):
     draw.line([(xc, yc), (xa, ya)], fill="green" if d3 <= 1210 else "red", width=2)
 
 # %%
+imgcat.imgcat(im, height=30)
 im.save("emprise.png")
+
+# %%
+
+for (x, y), (u, v) in zip(tri_points, tri_points_uv):
+    x, y = to_img(x, y)
+    draw.line([(x, y), (x + u * 10, y - v * 10)], fill="blue", width=10)
+
+# %%
+
+kd = KDTree(tri_points)
+
+for x, y in points_on_sea:
+    # x, y = proj_lambert93(-4.637903, 48.292275)
+    p = kd.query_ball_point([x, y], 620)
+
+    def nearest(i):
+        px, py = tri_points[i]
+        return (px - x) ** 2 + (py - y) ** 2
+
+    p = sorted(p, key=nearest)[:3]
+
+    if len(p) == 0:
+        continue
+
+    # ex, ey = to_img(x, y)
+    # draw.ellipse(((ex - 5, ey - 5), (ex + 5, ey + 5)), fill="blue", outline="blue")
+
+    d = []
+
+    for i in p:
+        px, py = tri_points[i]
+        d.append(((px - x) ** 2 + (py - y) ** 2) ** 0.5)
+        # px, py = to_img(px, py)
+        # draw.ellipse(((px - 5, py - 5), (px + 5, py + 5)), fill="black", outline="black")
+        # draw.line(((ex, ey), (px, py)), fill="black", width=3)
+
+    if len(p) == 3:
+        u0, v0 = tri_points_uv[p[0]]
+        u1, v1 = tri_points_uv[p[1]]
+        u2, v2 = tri_points_uv[p[2]]
+
+        u = (u0 * d[1] * d[2] + u1 * d[2] * d[0] + u2 * d[0] * d[1]) / (d[0] * d[1] + d[1] * d[2] + d[2] * d[0])
+        v = (v0 * d[1] * d[2] + v1 * d[2] * d[0] + v2 * d[0] * d[1]) / (d[0] * d[1] + d[1] * d[2] + d[2] * d[0])
+
+    elif len(p) == 2:
+        u0, v0 = tri_points_uv[p[0]]
+        u1, v1 = tri_points_uv[p[1]]
+
+        u = (u0 * d[1] + u1 * d[0]) / (d[0] + d[1])
+        v = (v0 * d[1] + v1 * d[0]) / (d[0] + d[1])
+
+    else:
+        u, v = tri_points_uv[p[0]]
+
+    x, y = to_img(x, y)
+    draw.line(((x, y), (x + u * 10, y - v * 10)), fill="cyan", width=10)
+
+
+# %%
+im.save("courants.png")
 imgcat.imgcat(im, height=30)
