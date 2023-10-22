@@ -5,10 +5,9 @@
 from operator import itemgetter
 from pathlib import Path
 
+import geopy.distance
 import pyproj
 from PIL import Image, ImageDraw, ImageFont
-import geopy.distance
-
 
 proj = pyproj.Proj("EPSG:3857")
 # proj = pyproj.Proj("EPSG:4230")
@@ -132,7 +131,6 @@ xmin = min(x)
 ymin = min(y)
 xmax = max(x)
 ymax = max(y)
-
 
 
 print(xmin, ymin, xmax, ymax)

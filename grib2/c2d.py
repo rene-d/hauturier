@@ -1,10 +1,13 @@
+# %%
+from collections import defaultdict
+import math
+from decimal import Decimal
 from operator import itemgetter
 from pathlib import Path
-import pyproj
+import tabulate
 import geopy.distance
 import numpy as np
-import math
-
+import pyproj
 
 
 def to_angle(s: str):
@@ -14,15 +17,20 @@ def to_angle(s: str):
     assert len(s) == 9
     assert s[-4] == "."
 
-    p = s.index(".")
-    degrees = int(s[0 : p - 2])
-    minutes = float(s[p - 2 :])
-    assert 0 <= minutes < 60
+    d = Decimal(s)
+    minutes = d % 100
+    degrees = d // 100
 
-    d = float(abs(degrees) + minutes / 60)
-    if degrees < 0:
-        d = -d
-    return d
+    return float(degrees + minutes / 60)
+
+    # p = s.index(".")
+    # degrees = int(s[0 : p - 2])
+    # minutes = float(s[p - 2 :])
+    # assert 0 <= minutes < 60
+    # d = float(abs(degrees) + minutes / 60)
+    # if degrees < 0:
+    #     d = -d
+    # return d
 
 
 def to_uv(line):
@@ -150,16 +158,68 @@ def mesures():
     print("", p1, p2, dist(p1, p2) / 16)
 
 
-if __name__ == "__main__":
-    me = (
-        [1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    )
+#
+#     me = (
+#         [1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#     )
 
-    ve = (
-        [2, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [2, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    )
+#     ve = (
+#         [2, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [2, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#     )
 
-    u, v = interpolate(20, -6, ve, me)
-    print(u, v)
+#     u, v = interpolate(20, -6, ve, me)
+#     print(u, v)
+
+
+def c2d_ll_reader(atlas="RADE_BREST_560"):
+    """
+    Retourne les coordonnées et les courants des points d'un atlas de courants de surface.
+    """
+
+    atlas = Path(atlas)
+    lines = atlas.read_text().splitlines()
+
+    for i in range(1, len(lines), 3):
+        coordinates = lines[i]
+        latitude = coordinates[0:9]
+        longitude = coordinates[9:18]
+        yield longitude, latitude
+
+
+# %%
+def maillage(atlas):
+    distances = defaultdict(lambda: 0)
+    if __name__ == "__main__":
+        proj_lambert93 = pyproj.Proj("EPSG:2154")  # RGF93 Lambert 93
+
+        p = c2d_ll_reader(atlas)
+
+        latitudes = defaultdict(list)
+
+        for lon, lat in p:
+            latitudes[lat].append(lon)
+
+        for lat, lons in latitudes.items():
+            if len(lons) == 1:
+                continue
+
+            lat = to_angle(lat)
+            lons = sorted(to_angle(lon) for lon in lons)
+
+            for a, b in zip(lons, lons[1:]):
+                a = (lat, a)
+                b = (lat, b)
+
+                d = round(geopy.distance.distance(a, b).m)
+                distances[d] += 1
+    distances = list(sorted(distances.items(), key=itemgetter(1), reverse=True))
+    return distances[:5]
+
+row=[]
+for f in Path("~/tile/C2D/CD_COURANTS2D/DONNEES").expanduser().rglob("*"):
+    if f.is_file() and f.name[-3:] == f.parent.name:
+        row.append((f.name, str(maillage(f))))
+print(tabulate.tabulate(row, headers=["atlas", "distances"], tablefmt="pretty"))
+# %%

@@ -4,29 +4,34 @@
 
 # %%
 
-import subprocess
 import json
+import sqlite3
+import subprocess
 from operator import itemgetter
 from pathlib import Path
-import imgcat
-import pyproj
-from PIL import Image, ImageDraw, ImageFont
-import requests
-from c2d import *
+
 import geopandas as gpd
-from shapely import Point, Polygon, MultiPolygon
-import sqlite3
+import imgcat
 import numpy as np
+import pyproj
+import requests
+from PIL import Image, ImageDraw, ImageFont
 from scipy.spatial import Delaunay, KDTree
-import matplotlib.pyplot as plt
+from shapely import LineString, MultiPolygon, Point, Polygon
+
+from c2d import c2d_reader, minmax
 
 # %%
-iDirectionIncrementInDegrees = 0.003369
-jDirectionIncrementInDegrees = 0.002253
+iDirectionIncrementInDegrees = 0.003369 * 5
+jDirectionIncrementInDegrees = 0.002253 * 5
 
 
 # %%
 class Limites:
+    """
+    Classe pour gérer les limites terre/mer.
+    """
+
     def __init__(self) -> None:
         self.db = sqlite3.connect("limites.db")
 
@@ -35,8 +40,9 @@ class Limites:
             "create unique index if not exists limites_idx on limites (lon,lat);"
         )
 
-        self.shp_name = "Limite_terre_mer_departement_29"
+        # self.shp_name = "Limite_terre_mer_departement_76"
         # self.shp_name = "Limite_terre_mer_facade_Manche_Atlantique"
+        self.shp_name = "Limite_terre_mer_departement_29"
 
         self._gdf = None
         self.clip = None
@@ -46,6 +52,9 @@ class Limites:
 
     @property
     def gdf(self) -> gpd.GeoSeries:
+        """
+        Renvoie le GeoDataFrame des limites terre/mer.
+        """
         if self._gdf is None:
             if not self.ensure_shp_file():
                 raise Exception(f"fichier shp {self.shp_name} non trouvé")
@@ -53,17 +62,23 @@ class Limites:
 
             self._gdf = gpd.read_file(self.shp_file)
             self._gdf = self._gdf.to_crs(epsg=4326)
+
+            # réduction pour accélérer les calculs
             if self.clip is not None:
                 print("clip", self.clip)
                 self._gdf = self._gdf.clip_by_rect(*self.clip)
+
         return self._gdf
 
-    def is_earth(self, lon, lat):
+    def is_earth(self, lon, lat) -> bool:
+        """
+        Retourne True si le point est à l'intérieur des limites terre/mer, False sinon.
+        """
         lon = round(lon, 6)
         lat = round(lat, 6)
 
         if row := self.db.execute("select earth from limites where lon=? and lat=?", (lon, lat)).fetchone():
-            return row[0]
+            return bool(row[0])
 
         earth = self.gdf.contains(Point(lon, lat)).any()
         self.db.execute("insert into limites values (?,?,?)", (lon, lat, 1 if earth else 0))
@@ -102,13 +117,10 @@ limites = Limites()
 # %%
 coeff = 95  # vive eau
 heure = 0  # PM
+atlas = "RADE_BREST_560"
 
-# print("lecture", "atlas des courants de surface")
-points = list(c2d_reader(coeff, heure))
+points = list(c2d_reader(coeff, heure, atlas))
 lon_min, lat_min, lon_max, lat_max = minmax(map(itemgetter(0, 1), points))
-
-# lon_min, lon_max = -4.448 - iDirectionIncrementInDegrees * 45, -4.380
-# lat_min, lat_max = 48.362636 - jDirectionIncrementInDegrees * 15, 48.3989
 
 if Path("zone.json").exists():
     zone = json.loads(Path("zone.json").read_text())
@@ -116,7 +128,6 @@ if Path("zone.json").exists():
     lat_min = min(map(itemgetter(1), zone))
     lon_max = max(map(itemgetter(0), zone))
     lat_max = max(map(itemgetter(1), zone))
-
 
 limites.set_clip(lon_min, lat_min, lon_max, lat_max)
 
@@ -129,18 +140,20 @@ print("range →", lon_min, lat_min, lon_max, lat_max)
 # WGS84 Pseudo-Mercator : https://epsg.io/3857
 # WGS84 World Mercator  : https://epsg.io/3395
 
+# conversion WGS84 → RGF93 Lambert 93
 proj_lambert93 = pyproj.Proj("EPSG:2154")  # RGF93 Lambert 93
 
-proj_img_merc = pyproj.Transformer.from_crs("EPSG:2154", "EPSG:3857", always_xy=True).transform
+# conversion RGF93 Lambert 93 → WGS84 Pseudo-Mercator
+proj_mercator = pyproj.Transformer.from_crs("EPSG:2154", "EPSG:3857", always_xy=True).transform
 
 
-x_min, y_min = proj_img_merc(*proj_lambert93(lon_min, lat_min))
-x_max, y_max = proj_img_merc(*proj_lambert93(lon_max, lat_max))
+x_min, y_min = proj_mercator(*proj_lambert93(lon_min, lat_min))
+x_max, y_max = proj_mercator(*proj_lambert93(lon_max, lat_max))
 
 print(proj_lambert93.name, proj_lambert93.crs, "→", x_min, y_min, x_max, y_max)
 
 
-R = 5000 / (x_max - x_min)
+R = 4000 / (x_max - x_min)
 D = 10
 
 x_min -= 3 * D / R
@@ -153,7 +166,7 @@ def to_img(x, y):
     """
     Convertit les coordonnées Lambert 93 en coordonnées image avec projection Web Mercator.
     """
-    x, y = proj_img_merc(x, y)
+    x, y = proj_mercator(x, y)
     x = round((x - x_min) * R)
     y = round((y_max - y) * R)
     return x, y
@@ -176,7 +189,6 @@ font = ImageFont.truetype("Roboto-Regular.woff2", 30)
 
 # %%
 
-points_on_earth = []
 points_on_sea = []
 
 
@@ -186,13 +198,12 @@ def draw_point_on_earth():
         lat = lat_min
         while lat <= lat_max + jDirectionIncrementInDegrees:
             if limites.is_earth(lon, lat):
-                color = "gray"
+                pass
 
+                # color = "gray"
                 # x1, y1 = to_xy(lon - iDirectionIncrementInDegrees / 2, lat + jDirectionIncrementInDegrees / 2)
                 # x2, y2 = to_xy(lon + iDirectionIncrementInDegrees / 2, lat - jDirectionIncrementInDegrees / 2)
                 # draw.rectangle((x1, y1, x2, y2), fill=color, outline=color)
-
-                points_on_earth.append(proj_lambert93(lon, lat))
 
             else:
                 color = "blue"
@@ -228,22 +239,22 @@ def is_point_in_triangle(p, p1, p2, p3):
 
 # %%
 
-tri_points = []
-tri_points_uv = []
+points_xy = []
+points_uv = []
 
 for i, (longitude, latitude, u, v) in enumerate(points):
     if lon_min <= longitude <= lon_max and lat_min <= latitude <= lat_max:
         # projection mercator
         x, y = proj_lambert93(longitude, latitude)
 
-        tri_points.append((x, y))
-        tri_points_uv.append((u, v))
+        points_xy.append((x, y))
+        points_uv.append((u, v))
 
         x, y = to_img(x, y)
         draw.rectangle((x - 3, y - 3, x + 3, y + 3), fill="red", outline="red")
 
-tri_points = np.array(tri_points)
-tri = Delaunay(tri_points)
+points_xy = np.array(points_xy)
+tri = Delaunay(points_xy)
 
 
 # récupère le trait de côte et convertit en coordonnées Lambert 93
@@ -266,9 +277,9 @@ for poly in gdf.geometry:
 tri_ok = [False] * len(tri.simplices)
 
 for i, t in enumerate(tri.simplices):
-    xa, ya = tri_points[t[0]]
-    xb, yb = tri_points[t[1]]
-    xc, yc = tri_points[t[2]]
+    xa, ya = points_xy[t[0]]
+    xb, yb = points_xy[t[1]]
+    xc, yc = points_xy[t[2]]
 
     d1 = ((xa - xb) ** 2 + (ya - yb) ** 2) ** 0.5
     d2 = ((xb - xc) ** 2 + (yb - yc) ** 2) ** 0.5
@@ -305,20 +316,34 @@ im.save("emprise.png")
 
 # %%
 
-for (x, y), (u, v) in zip(tri_points, tri_points_uv):
+for (x, y), (u, v) in zip(points_xy, points_uv):
     x, y = to_img(x, y)
     draw.line([(x, y), (x + u * 10, y - v * 10)], fill="blue", width=10)
 
 # %%
 
-kd = KDTree(tri_points)
+
+def to_str(x, y):
+    return f"{round(x)}_{round(y)}"
+
+
+interpolation = dict()
+
+kd = KDTree(points_xy)
 
 for x, y in points_on_sea:
-    # x, y = proj_lambert93(-4.637903, 48.292275)
-    p = kd.query_ball_point([x, y], 620)
+    p = kd.query_ball_point([x, y], 610)
 
     def nearest(i):
-        px, py = tri_points[i]
+        px, py = points_xy[i]
+
+        if gdf.intersection(LineString([(x, y), (px, py)])).any():
+            # draw.line((to_img(px, py), to_img(x, y)), fill="red", width=10)
+            # if isinstance(segment, LineString):
+            #     draw.line((to_img(*segment.coords[0]), to_img(*segment.coords[1])), fill="red", width=20)
+
+            return float("+inf")
+
         return (px - x) ** 2 + (py - y) ** 2
 
     p = sorted(p, key=nearest)[:3]
@@ -332,32 +357,39 @@ for x, y in points_on_sea:
     d = []
 
     for i in p:
-        px, py = tri_points[i]
+        px, py = points_xy[i]
         d.append(((px - x) ** 2 + (py - y) ** 2) ** 0.5)
         # px, py = to_img(px, py)
         # draw.ellipse(((px - 5, py - 5), (px + 5, py + 5)), fill="black", outline="black")
         # draw.line(((ex, ey), (px, py)), fill="black", width=3)
 
     if len(p) == 3:
-        u0, v0 = tri_points_uv[p[0]]
-        u1, v1 = tri_points_uv[p[1]]
-        u2, v2 = tri_points_uv[p[2]]
+        u0, v0 = points_uv[p[0]]
+        u1, v1 = points_uv[p[1]]
+        u2, v2 = points_uv[p[2]]
 
         u = (u0 * d[1] * d[2] + u1 * d[2] * d[0] + u2 * d[0] * d[1]) / (d[0] * d[1] + d[1] * d[2] + d[2] * d[0])
         v = (v0 * d[1] * d[2] + v1 * d[2] * d[0] + v2 * d[0] * d[1]) / (d[0] * d[1] + d[1] * d[2] + d[2] * d[0])
 
-    elif len(p) == 2:
-        u0, v0 = tri_points_uv[p[0]]
-        u1, v1 = tri_points_uv[p[1]]
+        interpolation[to_str(x, y)] = (p, d)
 
-        u = (u0 * d[1] + u1 * d[0]) / (d[0] + d[1])
-        v = (v0 * d[1] + v1 * d[0]) / (d[0] + d[1])
+    # elif len(p) == 2:
+    #     u0, v0 = tri_points_uv[p[0]]
+    #     u1, v1 = tri_points_uv[p[1]]
+
+    #     u = (u0 * d[1] + u1 * d[0]) / (d[0] + d[1])
+    #     v = (v0 * d[1] + v1 * d[0]) / (d[0] + d[1])
 
     else:
-        u, v = tri_points_uv[p[0]]
+        u, v = points_uv[p[0]]
+
+        interpolation[to_str(x, y)] = p[0]
 
     x, y = to_img(x, y)
     draw.line(((x, y), (x + u * 10, y - v * 10)), fill="cyan", width=10)
+
+
+Path("interpol.json").write_text(json.dumps(interpolation, indent=2))
 
 
 # %%
