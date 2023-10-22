@@ -10,7 +10,7 @@ from dateutil import tz
 
 from sun_ephem import ephem
 
-from hdm import SPM, Harbors
+from hdm import SPM
 from oceano import Oceano, Spots
 
 try:
@@ -44,9 +44,14 @@ def _(text, values):
     return re.sub(r"@([\w\._]+)@", lambda x: value(x[1]), text)
 
 
+def fix_timezone(hour):
+    hour = hour.replace(" CEST", r" {\tiny \rotatebox{90}{+2}}")
+    hour = hour.replace(" CET", r" {\tiny \rotatebox{90}{+1}}")
+    return hour
+
+
 class Tides:
     def __init__(self) -> None:
-        self.harbors = Harbors()
         self.lines = []
         self.spm = SPM()
         self.cache = None
@@ -80,8 +85,8 @@ class Tides:
         local_zone = tz.tzlocal()
         w = {
             "sun": {
-                "rise": v["sun"]["rise"].astimezone(local_zone).strftime("%H:%M"),
-                "set": v["sun"]["set"].astimezone(local_zone).strftime("%H:%M"),
+                "rise": v["sun"]["rise"].astimezone(local_zone).strftime("%H:%M %Z"),
+                "set": v["sun"]["set"].astimezone(local_zone).strftime("%H:%M %Z"),
             }
         }
         self.cache[key] = w
@@ -92,12 +97,12 @@ class Tides:
     def day(self, harbor, date_ymd: datetime, show_harbour=True):
         """Crée un tableau avec les marées du jour."""
 
-        harbor = self.harbors[harbor]
+        harbor = self.spm.harbors[harbor]
 
         e = self.ephem(harbor["lat"], harbor["lon"], date_ymd.strftime("%Y-%m-%d"))
         harbor_name = harbor["toponyme"]
 
-        _, _, hlt = self.spm.hlt(harbor["cst"], date_ymd)
+        _, hlt = self.spm.hlt_utc(harbor["cst"], date_ymd)
 
         r = self.spots.filter(harbor_name)
         if len(r) == 0:
@@ -125,16 +130,24 @@ class Tides:
                 {"date_ymd": date_ymd.strftime("%a %Y-%m-%d")},
             )
 
-        for tide, hour, height, coeff in hlt:
+        for _, hour, tide, height, coeff in hlt:
             tide = {
-                "tide.high": "PM",
-                "tide.low": "BM",
-                "tide.none": "--",
-            }[tide]
+                "high": "PM",
+                "low": "BM",
+                "none": "--",                
+            }[tide] 
+
+            coeff=coeff or "--"
+
+            hour = (
+                fix_timezone(hour)
+                .replace(" CET", r" {\tiny \rotatebox{90}{+1}}")
+                .replace(" CET", r" {\tiny \rotatebox{90}{+1}}")
+            )
 
             sep = "& " if show_harbour else ""
 
-            self.add(rf"{sep}{tide} & {hour} & {height} & {coeff} \\")
+            self.add(rf"{sep}{tide} & {hour} & {height} m & {coeff} \\")
 
         if show_harbour:
             self.add(r"\cline{2-5}")
@@ -142,10 +155,10 @@ class Tides:
             self.add(r"\cline{1-4}")
 
         self.add(
-            sep + r"Lever & @sunrise@ & Coucher & @sunset@ \\",
+            sep + r"{\small Lever} & @sunrise@ & {\small Coucher} & @sunset@ \\",
             {
-                "sunrise": e["sun"]["rise"],
-                "sunset": e["sun"]["set"],
+                "sunrise": fix_timezone(e["sun"]["rise"]),
+                "sunset": fix_timezone(e["sun"]["set"]),
             },
         )
 

@@ -13,4 +13,3 @@ Exemples à prendre ici : [Exercices de marée](https://www.loisirs-nautic.fr/ex
 ## gpx/gpxmerge.py
 
 Fusionne plusieurs trajectoires GPX en une seule.
-

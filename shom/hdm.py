@@ -3,91 +3,155 @@
 """
 Service de Prédictions de Marées / HDM
 
+Site: https://maree.shom.fr
 Documentation approximative API: https://services.data.shom.fr/spm/doc/#0-2
 PDF: https://services.data.shom.fr/static/help/Aide-en-ligne_DATA-SHOM-FR.pdf
 """
 
-import configparser
 import json
-import random
-import time
-from datetime import datetime
-from fnmatch import fnmatch
+import logging
+import sqlite3
+import typing as t
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlencode, urlsplit
 
-import defusedxml.ElementTree as ET
 import requests
-import rapidfuzz
 
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6.1 Safari/605.1.15"  # noqa
 
 
-def get_hdm_urls(verbose=False):
+def _get_maree_config(key=None):
     """
     Affiche l'URL du service HDM trouvé dans la page web.
     Non documenté par le SHOM.
     """
-    headers = {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "fr-FR,fr;q=0.9",
-        "Host": "maree.shom.fr",
-        "User-Agent": USER_AGENT,
-    }
-    r = requests.get("https://maree.shom.fr", headers=headers)
+    f = Path("data/shom_config.json")
 
-    if verbose:
-        Path("maree.html").write_bytes(r.content)
+    if f.exists():
+        config = json.loads(f.read_text())
+    else:
+        headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "fr-FR,fr;q=0.9",
+            "User-Agent": USER_AGENT,
+        }
+        r = requests.get("https://maree.shom.fr", headers=headers)
 
-    class HdmConfig(HTMLParser):
-        """Extract the config structure."""
+        class HdmConfig(HTMLParser):
+            """Extract the config structure."""
 
-        config = {}
+            config = {}
 
-        def handle_starttag(self, tag, attrs):
-            if tag == "meta":
-                if ("name", "shom-horaires-des-marees/config/environment") in attrs:
-                    for name, value in attrs:
-                        if name == "content":
-                            self.config = json.loads(unquote(value))
+            def handle_starttag(self, tag, attrs):
+                if tag == "meta":
+                    if ("name", "shom-horaires-des-marees/config/environment") in attrs:
+                        for name, value in attrs:
+                            if name == "content":
+                                self.config = json.loads(unquote(value))
 
-    parser = HdmConfig()
-    parser.feed(r.text)
-    if verbose:
-        Path("config.json").write_text(json.dumps(parser.config, indent=2))
-    wfs_url = parser.config.get("wfsHarborUrl")
-    if wfs_url:
+        parser = HdmConfig()
+        parser.feed(r.text)
+
+        if len(parser.config) == 0:
+            print("config non trouvée dans https://maree.shom.fr")
+            exit(2)
+        Path("data/shom_config.json").write_text(json.dumps(parser.config, indent=2))
+        config = parser.config
+
+    if key is not None:
+        value = config.get(key)
+        if value:
+            return value
+        print(f"{key} non trouvé dans la config")
+        exit(2)
+
+    return config
+
+
+class WFS:
+    """
+    Web Feature Service
+    """
+
+    def __init__(self, config_key, access_key=None, name=None) -> None:
+        name = name or access_key
+        self.name = name
+        f = Path("data") / name
+        f = f.with_suffix(".json")
+
+        if not f.is_file():
+            url = _get_maree_config(config_key)
+
+            headers = {
+                "Accept": "application/json",  # , text/javascript, */*; q=0.01",
+                "User-Agent": USER_AGENT,
+                "Referer": "https://maree.shom.fr/",
+            }
+
+            r = requests.get(url, headers=headers)
+            data = r.json()
+            f.parent.mkdir(exist_ok=True, parents=True)
+            f.write_bytes(r.content)
+
+            print(f"téléchargé: {f}")
+        else:
+            data = json.load(f.open())
+
+        self.features = {}
+        self.items = {}
+        for feature in data["features"]:
+            if access_key:
+                properties = feature["properties"]
+                self.items[properties[access_key]] = properties
+            else:
+                self.items[feature["id"]] = feature
+
+    # def __getitem__(self, key):
+    #     return self.items.get(key)
+
+    # def __iter__(self):
+    #     return iter(self.items.items())
+
+    # def keys(self):
+    #     return self.items.keys()
+
+    def get_feature(typename):
+        """
+        Interroge une featue du serveur [WFS](https://fr.wikipedia.org/wiki/Web_Feature_Service).
+        """
+        wfs_url = _get_maree_config("wfsHarborUrl")
+        assert wfs_url is not None
+
         p = urlsplit(wfs_url)
         wfs_url = f"{p.scheme}://{p.netloc}{p.path}"
 
-    assert parser.config.get("wlEndpoint") == "/spm/wl"
-    assert parser.config.get("hltEndpoint") == "/spm/hlt"
-    assert parser.config.get("coeffEndpoint") == "/spm/coeff"
+        query = {
+            "service": "WFS",
+            "version": "1.0.0",
+            "srsName": "EPSG:3857",  # projection Web Mercator
+            "request": "GetFeature",
+            "typeName": typename,
+            "outputFormat": "application/json",
+        }
 
-    return parser.config.get("hdmServiceUrl"), wfs_url
+        url = f"{wfs_url}?{urlencode(query)}"
+        headers = {
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "User-Agent": USER_AGENT,
+            "Referer": "https://maree.shom.fr/",
+        }
+
+        print(url)
+        r = requests.get(url, headers=headers)
+        print(r)
+        print(r.content)
 
 
-def _get_keys():
-    rc = Path("data/.shomrc")
-    ini = configparser.ConfigParser()
-
-    if rc.is_file():
-        ini.read(rc)
-    if ini.has_section("hdm"):
-        return ini["hdm"]["HDM_SERVICE_URL"], ini["hdm"]["WFS_URL"]
-
-    HDM_SERVICE_URL, WFS_URL = get_hdm_urls()
-
-    ini.add_section("hdm")
-    ini.set("hdm", "HDM_SERVICE_URL", HDM_SERVICE_URL)
-    ini.set("hdm", "WFS_URL", WFS_URL)
-
-    rc.parent.mkdir(exist_ok=True, parents=True)
-    with rc.open("w") as fp:
-        ini.write(fp)
-
-    return HDM_SERVICE_URL, WFS_URL
+class Harbors(WFS):
+    def __init__(self):
+        super().__init__("wfsHarborUrl", access_key="cst", name="liste_ports_spm_h2m")
 
 
 class SPM:
@@ -102,219 +166,324 @@ class SPM:
             self.data = {}
         self._harbors = None
 
+        self.db = sqlite3.connect("data/spm.sqlite")
+        self.db.executescript(
+            """
+create table if not exists hlt (
+    cst text not null,      -- code du port en majuscule
+    date_utc text not null, -- jour au format YYYY-MM-DDTHH:MM UTC
+    tide text not null,     -- high/low
+    height number,          -- hauteur de la marée
+    coeff integer           -- uniquement pour les PM (tide=high)
+);
+create unique index if not exists idx_hlt on hlt (cst, date_utc);
+
+create table if not exists nearest (
+    cst text not null,      -- code du port en majuscule
+    date text not null,     -- date de la requête
+    utc number not null,    -- fuseau horaire de la date de la requête
+    isBM boolean,           -- true si BM, false si PM
+    diff number,            -- différence en heures avec la PM la plus proche
+    coeff integer,          -- uniquement pour les PM
+    closest text,           -- date de la PM la plus proche
+    json text               -- contenu de la réponse
+);
+"""
+            ""
+        )
+
+        self.sess = requests.Session()
+        self.sess.headers["User-Agent"] = "Mozilla/5.0"
+        self.sess.headers["Referer"] = "https://maree.shom.fr/"
+
+        self.config = _get_maree_config()
+        self.hdm_service_url = self.config["hdmServiceUrl"]
+
     @property
     def harbors(self):
-        """Charge ou retourne la liste des ports."""
-
+        """
+        Charge ou retourne la liste des ports.
+        """
         if self._harbors:
             return self._harbors
 
-        f = Path("data/harbors.xml")
-        if not f.is_file():
-            url = "https://services.data.shom.fr/spm/listHarbors"
-            headers = {"Accept": "*/*"}
-            r = requests.get(url, headers=headers)
-            r = r.content
-            f.parent.mkdir(exist_ok=True, parents=True)
-            f.write_bytes(r)
-        else:
-            r = f.read_bytes()
+        wfs = Harbors()
+        self._harbors = wfs.items
+        for k, v in self._harbors.items():
+            assert k == v["cst"]
+        return self._harbors
 
-        r = ET.fromstring(r)
-        harbors = {}
-        for i in r:
-            harbors[i.attrib["cst"]] = i.attrib
-        self._harbors = harbors
-        return harbors
-
-    def hlt(self, harbor, date_ymd: datetime):
-        """hlt (Annuaire de marée)."""
-        return self._request("hlt", harbor, date_ymd)
-
-    def wl(self, harbor, date_ymd: datetime):
-        """wl (Hauteur d'eau à un pas de temps donné)."""
-        return self._request("wl", harbor, date_ymd)
-
-    def _request(self, service, harbor, date_ymd: datetime):
-        """Effectue une requête au service HDM (non documenté par le SHOM)."""
-
-        if isinstance(date_ymd, datetime):
-            date_ymd = date_ymd.strftime("%Y-%m-%d")
-
-        if harbor not in self.harbors:
+    def find_harbor(self, harbor):
+        if harbor.upper() not in self.harbors:
             lean = "".join(filter(str.isalpha, harbor.lower()))
             for v in self.harbors.values():
-                name = "".join(filter(str.isalpha, v["name"].lower()))
+                name = "".join(filter(str.isalpha, v["cst"].lower()))
+                if name == lean:
+                    harbor = v["cst"]
+                    break
+                name = "".join(filter(str.isalpha, v["toponyme"].split()[0].lower()))
+                if name == lean:
+                    harbor = v["cst"]
+                    break
+                name = "".join(filter(str.isalpha, v["cst"].split("_")[0].lower()))
                 if name == lean:
                     harbor = v["cst"]
                     break
             else:
-                raise ValueError(harbor)
-
-        correlation = self.harbors[harbor]["isCoeffAvailable"]
-
-        headers = {
-            "Origin": "https://maree.shom.fr",
-            "Accept": "*/*",
-            "Host": "services.data.shom.fr",
-            "User-Agent": USER_AGENT,
-            "Referer": "https://maree.shom.fr/",
-        }
-
-        if harbor not in self.data or date_ymd not in self.data[harbor]["hlt"]:
-            time.sleep(random.random() % 3)
-
-            print(f"download spm for harbor {harbor} date {date_ymd} correlation {correlation}")
-
-            # if correlation == "1":
-            #     date_ym1 = date_ymd[:-2]+"01"
-            #     url = f"{HDM_SERVICE_URL}/spm/coeff?harborName={harbor}&duration=365&date={date_ym1}&utc=1&correlation=1"  # noqa
-            #     coeff = requests.get(url, headers=headers).json()
-            #     # retourne un tableau sur l'année avec les coefficients pm de chaque jour
-
-            HDM_SERVICE_URL, _ = _get_keys()
-
-            url = f"{HDM_SERVICE_URL}/spm/hlt?harborName={harbor}&duration=7&date={date_ymd}&utc=standard&correlation={correlation}"  # noqa
-            hlt = requests.get(url, headers=headers).json()
-
-            url = f"{HDM_SERVICE_URL}/spm/wl?harborName={harbor}&duration=7&date={date_ymd}&utc=standard&nbWaterLevels=288"  # noqa
-            wl = requests.get(url, headers=headers).json()
-
-            if harbor not in self.data:
-                self.data[harbor] = {"hlt": {}, "wl": {}, "coeff": {}}
-
-            for k, v in wl.items():
-                self.data[harbor]["wl"][k] = v
-
-            for k, v in hlt.items():
-                self.data[harbor]["hlt"][k] = v
-
-            Path("data/spm.json").parent.mkdir(exist_ok=True, parents=True)
-
-            json.dump(self.data, Path("data/spm.json").open("w"), indent=2)
-
-        return harbor, date_ymd, self.data[harbor][service][date_ymd]
-
-
-class WFS:
-    def __init__(self, typename, access_key=None, filename=None) -> None:
-        if filename:
-            f = Path(filename)
+                raise ValueError(f"Port non trouvé {harbor}")
         else:
-            f = Path("data") / typename.split(":")[1]
-            f = f.with_suffix(".json")
-        if not f.is_file():
-            _, WFS_URL = _get_keys()
+            harbor = harbor.upper()
 
-            url = f"{WFS_URL}?"
-            query = {
-                "service": "WFS",
-                "version": "1.0.0",
-                "srsName": "EPSG:3857",  # projection Web Mercator
-                "request": "GetFeature",
-                "typeName": typename,
-                "outputFormat": "application/json",
-            }
-            headers = {
-                "Accept": "application/json, text/javascript, */*; q=0.01",
-                "Origin": "https://maree.shom.fr",
-                "Host": "services.data.shom.fr",
-                "User-Agent": USER_AGENT,
-                "Referer": "https://maree.shom.fr/",
-            }
+        return harbor
 
-            r = requests.get(url + urlencode(query), headers=headers)
-            data = r.json()
-            f.parent.mkdir(exist_ok=True, parents=True)
-            f.write_bytes(r.content)
-        else:
-            data = json.load(f.open())
+    def hlt_utc(self, harbor, date_ymd: datetime, force_update=False, duration=366):
+        """
+        Effectue une requête au service HDM (non documenté par le SHOM).
+        service: hlt (Annuaire de marée).
 
-        self.features = {}
-        self.items = {}
-        for feature in data["features"]:
-            if access_key:
-                properties = feature["properties"]
-                self.items[properties[access_key]] = properties
+        harbor doit être features[].properties.cst de liste_ports_spm_h2m
+        """
+
+        assert isinstance(date_ymd, datetime)
+
+        if not harbor:
+            return None, []
+
+        start_date = date_ymd.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        end_date = start_date + timedelta(days=1)
+
+        start_date_ymd = start_date.strftime("%Y-%m-%d")
+
+        harbor = self.find_harbor(harbor)
+
+        rows = []
+        if not force_update:
+            for tide, date_utc, height, coeff in self.db.execute(
+                "select tide,date_utc,height,coeff from hlt where cst=? and date_utc between ? and ?",
+                (
+                    harbor,
+                    start_date.strftime("%Y-%m-%dT%H:%M:00Z"),
+                    end_date.strftime("%Y-%m-%dT%H:%M:00Z"),
+                ),
+            ):
+                date_local = datetime.fromisoformat(date_utc).astimezone()
+                rows.append((date_local.strftime("%Y-%m-%d"), date_local.strftime("%H:%M %Z"), tide, height, coeff))
+
+        if len(rows) == 0:
+            # cf. shom-horaires-des-marees.js
+            # this.modelFor("harbor").properties.coeff
+            correlation = self.harbors[harbor]["coeff"]
+
+            print(f"download spm for harbor {harbor} date {start_date_ymd} correlation {correlation}")
+
+            hlt_endpoint = self.config["hltEndpoint"]  # /spm/hlt
+
+            url = f"{self.hdm_service_url}{hlt_endpoint}?harborName={harbor}&duration={duration}&date={start_date_ymd}&utc=0&correlation={correlation}"  # noqa
+            r = self.sess.get(url)
+            if r.status_code != 200:
+                print(r)
+                print(r.content)
+                r.raise_for_status()
+
+            hlt = r.json()
+            assert duration == len(hlt)
+
+            self.db.execute("delete from hlt where cst=? and date_utc>=?", (harbor, start_date_ymd))
+
+            rows = []
+
+            for date, tides in hlt.items():
+                for tide, hour, height, coeff in tides:
+                    tide = tide.removeprefix("tide.")
+                    if tide == "none":
+                        if hour != "--:--" and hour != "---":
+                            print("marée inconnue", tides)
+                            exit()
+                        continue
+                    assert tide == "high" or tide == "low"
+
+                    height = float(height) if height != "---" else None
+                    coeff = int(coeff) if coeff != "---" else None
+
+                    date_utc = f"{date}T{hour}:00Z"
+
+                    self.db.execute(
+                        "insert into hlt (cst,date_utc,tide,height,coeff) values (?,?,?,?,?)",
+                        (harbor, date_utc, tide, height, coeff),
+                    )
+
+                    date_utc = datetime.fromisoformat(date_utc)
+
+                    if start_date <= date_utc <= end_date:
+                        date_local = date_utc.astimezone()
+                        rows.append(
+                            (date_local.strftime("%Y-%m-%d"), date_local.strftime("%H:%M %Z"), tide, height, coeff)
+                        )
+
+            self.db.commit()
+
+        if not (3 <= len(rows) <= 5):
+            print(rows)
+            print(ValueError(f"nombre de marées incorrect pour {date_ymd}"))
+
+        return harbor, rows
+
+    def interpolation(self, harbor, date: datetime, isBM=False) -> t.Dict[str, str]:
+        harbor = harbor.upper()
+        date_utc = date.astimezone(timezone.utc)
+
+        self.hlt_utc(harbor, date_utc)
+        # print(date_utc)
+
+        tide = "low" if isBM else "high"
+
+        cur = self.db.execute(
+            "select tide,date_utc,height,coeff from hlt where cst=? and date_utc<=? and tide=? order by date_utc desc limit 1",
+            (harbor, date_utc.strftime("%Y-%m-%dT%H:%M:00Z"), tide),
+        )
+        rows_inf = cur.fetchone()
+        # print(rows_inf)
+
+        cur = self.db.execute(
+            "select tide,date_utc,height,coeff from hlt where cst=? and date_utc>=? and tide=? order by date_utc asc limit 1",
+            (harbor, date_utc.strftime("%Y-%m-%dT%H:%M:00Z"), tide),
+        )
+        rows_sup = cur.fetchone()
+        # print(rows_sup)
+
+        if rows_inf == rows_sup:
+            return {"diff": 0.00, "coeff": rows_inf[3], "closestDateTime": rows_inf[1].rstrip("Z")}
+
+        dz = datetime.fromisoformat(rows_sup[1]) - datetime.fromisoformat(rows_inf[1])
+        d = date_utc - datetime.fromisoformat(rows_inf[1])
+
+        diff = d.total_seconds() / dz.total_seconds() * 12
+        if diff <= 6:
+            if tide == "low":
+                coeff = self.db.execute(
+                    "select coeff from hlt where cst=? and date_utc<=? and tide='high' order by date_utc desc limit 1",
+                    (harbor, rows_inf[1]),
+                ).fetchone()[0]
             else:
-                self.items[feature["id"]] = feature
+                coeff = rows_inf[3]
 
-    def __getitem__(self, key):
-        return self.items.get(key)
-
-    def __iter__(self):
-        return iter(self.items.items())
-
-    def keys(
-        self,
-    ):
-        return self.items.keys()
-
-    def find(self, pattern):
-        def lean(text):
-            return "".join(filter(str.isalpha, text.lower()))
-
-        if "*" in pattern:
-            pattern = "".join(filter(lambda c: str.isalpha(c) or c == "*", pattern.lower()))
-            for k, v in self.items.items():
-                if fnmatch(lean(k), pattern):
-                    yield k, v
+            return {"diff": round(diff, 2), "coeff": coeff, "closestDateTime": rows_inf[1].rstrip("Z")}
         else:
-            best_d = 0.15
-            best_kv = None
-            for k, v in self.items.items():
-                d = rapidfuzz.distance.JaroWinkler.distance(k, pattern, processor=lean)
-                if d == 0:
-                    yield k, v
-                    return
-                elif d <= best_d:
-                    best_d = d
-                    best_kv = (k, v)
-            if best_kv:
-                yield best_kv
+            if tide == "low":
+                coeff = self.db.execute(
+                    "select coeff from hlt where cst=? and date_utc<=? and tide='high' order by date_utc desc limit 1",
+                    (harbor, rows_sup[1]),
+                ).fetchone()[0]
+            else:
+                coeff = rows_sup[3]
+            return {"diff": round(diff - 12, 2), "coeff": coeff, "closestDateTime": rows_sup[1].rstrip("Z")}
+
+    def nearest(self, harbor, date: datetime, isBM=False) -> t.Dict[str, str]:
+        """
+        Service non documenté de lecture de la marée la plus proche d'une PM (ou d'une BM).
+        """
+        spm_url = "https://services.data.shom.fr/spm/rzuf4y2dexc9dsth4k9c858r"
+
+        harbor = harbor.upper()
+        date_utc = date.astimezone(timezone.utc)
+
+        d = date_utc.strftime("%Y-%m-%dT%H:%M:%S")
+
+        row = self.db.execute(
+            "select json from nearest where cst=? and date=? and utc=0 and isBM=?", (harbor, d, isBM)
+        ).fetchone()
+        if row is None:
+            isBM_value = "true" if isBM else "false"
+            url = f"{spm_url}/diffFromNearestPM?harborName={harbor}&utc=0&datetime={d}&isBM={isBM_value}"
+            r = self.sess.get(
+                url,
+                headers={"Referer": "https://data.shom.fr/"},
+            )
+            r.raise_for_status()
+
+            logging.debug(f"response: {r}")
+            logging.debug(f"response: {r.text}")
+            # logging.debug(f"response: {r.headers}")
+
+            if r.headers["content-type"].split(";")[0].strip() == "application/json":
+                values = r.json()
+                closest = values["closestDateTime"]
+                diff = values["diff"]
+                coeff = values["coeff"]
+
+                self.db.execute(
+                    "insert into nearest (cst,date,utc,isBM,diff,coeff,closest,json) values (?,?,?,?,?,?,?,?)",
+                    (harbor, d, 0, isBM, diff, coeff, closest, r.text),
+                )
+                self.db.commit()
+
+            else:
+                print(r.headers)
+                print(r.text)
+                raise ValueError(f"response: {r}")
+        else:
+            values = json.loads(row[0])
+
+        values["coeff"] = int(values["coeff"])
+        values["diff"] = float(values["diff"])
+        return values
 
 
-class Harbors(WFS):
-    def __init__(self, **args):
-        super().__init__(typename="SPM_PORTS_WFS:liste_ports_spm_h2m", access_key="cst", **args)
-
-
-class Zones(WFS):
-    def __init__(self, **args):
-        super().__init__(typename="H2M_ZONES_WFS:zones_h2m_20160126", access_key="zone_fr", **args)
-
-
-if __name__ == "__main__":
+def main():
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose")
-    parser.add_argument("-u", "--url", action="store_true", help="Print hdm service and WFS urls.")
-    parser.add_argument("-H", "--harbors", action="store_true", help="Fetch the list of harbors.")
-    parser.add_argument("-Z", "--zones", action="store_true", help="Fetch the list of zones.")
-    parser.add_argument("harbor", help="harbor", nargs="?", default="")
+
+    parser.add_argument("-v", "--verbose", action="store_true", help="Affiche les requêtes")
+    parser.add_argument("-f", "--force", action="store_true", help="Force le téléchargement des données")
+    parser.add_argument("-d", "--date", help="Date des horaires de marée")
+    parser.add_argument(
+        "--duree",
+        metavar="JOURS",
+        type=int,
+        default=1,
+        help="Durée en jours",
+    )
+    parser.add_argument("--nearest", action="store_true", help="requête diffFromNearestPM")
+    parser.add_argument("--isBM", action="store_true", help="flag BM pour --nearest")
+
+    parser.add_argument("harbor", help="Port de référence")
     args = parser.parse_args()
 
-    if args.harbors or args.zones:
-        names = Harbors() if args.harbors else Zones()
-        if args.harbor:
-            r = list(names.find(args.harbor))
-            if len(r) == 1:
-                k, v = r[0]
-                print(k)
-                for k, v in v.items():
-                    print(f"{k:>16} : {v}")
-            else:
-                for k, _ in r:
-                    print(k)
-    elif args.url:
-        print(get_hdm_urls(args.verbose))
-    else:
-        a = SPM()
-        try:
-            h, d, m = a.hlt(args.harbor, datetime.now())
-            print(h, d)
-            for i in m:
-                print("\t".join(i))
-        except ValueError:
-            print(f"Harbor {args.harbor} not found")
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
+
+    a = SPM()
+
+    try:
+        if args.date:
+            date = datetime.fromisoformat(args.date)
+        else:
+            date = datetime.now()
+
+        if args.harbor.lower() == "bretagne":
+            for k, v in a.harbors.items():
+                lat, lon = v["lat"], v["lon"]
+                if -7 <= lon <= -1.5 and 47.03 <= lat <= 50.33:
+                    print(k, v["toponyme"], lat, lon)
+                    a.hlt_utc(k, datetime.now(), args.force)
+
+        elif args.nearest:
+            print(a.nearest(args.harbor, date, args.isBM))
+            print()
+            print(a.interpolation(args.harbor, date, args.isBM))
+
+        else:
+            for day in range(args.duree):
+                harbor, tides = a.hlt_utc(args.harbor, date + timedelta(days=day), args.force)
+                print(harbor, tides)
+                for i in tides:
+                    print(" ⇨ " + "\t".join(map(str, i)))
+
+    except Exception as e:
+        print(e)
+        raise e
+
+
+if __name__ == "__main__":
+    main()
