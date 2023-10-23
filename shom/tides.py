@@ -9,7 +9,7 @@ from pathlib import Path
 from dateutil import tz
 
 from sun_ephem import ephem
-
+import typing as t
 from hdm import SPM
 from oceano import Oceano, Spots
 
@@ -19,7 +19,7 @@ except locale.Error:
     pass
 
 
-def _(text, values):
+def _(text: str, values: t.Union[t.List[str], t.Dict[str, str]]) -> str:
     """
     Format a string with @oid@ markups.
     Examples:
@@ -44,9 +44,9 @@ def _(text, values):
     return re.sub(r"@([\w\._]+)@", lambda x: value(x[1]), text)
 
 
-def fix_timezone(hour):
-    hour = hour.replace(" CEST", r" {\tiny \rotatebox{90}{+2}}")
-    hour = hour.replace(" CET", r" {\tiny \rotatebox{90}{+1}}")
+def fix_timezone(hour: str) -> str:
+    hour = hour.replace(" CEST", r"{\tiny\color{red} \rotatebox[origin=lb]{90}{+2}}")
+    hour = hour.replace(" CET", r"{\tiny\color{blue} \rotatebox[origin=lb]{90}{+1}}")
     return hour
 
 
@@ -54,10 +54,13 @@ class Tides:
     def __init__(self) -> None:
         self.lines = []
         self.spm = SPM()
-        self.cache = None
+        self.ephem_cache = None
         self.spots = Spots(exact=False)
 
-    def add(self, text, values=None):
+    def add(self, text: str, values: t.Union[t.List[str], t.Dict[str, str]] = None):
+        """
+        Ajoute `text` au document LaTeX
+        """
         if values is None:
             self.lines.append(text)
         else:
@@ -69,15 +72,19 @@ class Tides:
     def print(self):
         print("\n".join(self.lines))
 
-    def ephem(self, latitude, longitude, date):
-        if self.cache is None:
-            if Path("data/ephem.json").is_file():
-                self.cache = json.loads(Path("data/ephem.json").read_bytes())
+    def ephem(self, latitude, longitude, date) -> t.Dict:
+        """
+        Retourne les heures de lever et de coucher de soleil pour une longitude et une latitude données.
+        """
+        ephem_file = Path("data/ephem.json")
+        if self.ephem_cache is None:
+            if ephem_file.is_file():
+                self.ephem_cache = json.loads(ephem_file.read_bytes())
             else:
-                self.cache = {}
+                self.ephem_cache = {}
 
         key = f"{latitude},{longitude},{date}"
-        v = self.cache.get(key)
+        v = self.ephem_cache.get(key)
         if v:
             return v
 
@@ -89,13 +96,15 @@ class Tides:
                 "set": v["sun"]["set"].astimezone(local_zone).strftime("%H:%M %Z"),
             }
         }
-        self.cache[key] = w
-        Path("data/ephem.json").parent.mkdir(exist_ok=True, parents=True)
-        Path("data/ephem.json").write_text(json.dumps(self.cache, indent=2))
+        self.ephem_cache[key] = w
+        ephem_file.parent.mkdir(exist_ok=True, parents=True)
+        ephem_file.write_text(json.dumps(self.ephem_cache, indent=2))
         return w
 
-    def day(self, harbor, date_ymd: datetime, show_harbour=True):
-        """Crée un tableau avec les marées du jour."""
+    def day(self, harbor: str, date_ymd: datetime, show_harbour_name=True):
+        """
+        Crée un tableau avec les marées du jour et les heures de lever et de coucher de soleil.
+        """
 
         harbor = self.spm.harbors[harbor]
 
@@ -110,12 +119,12 @@ class Tides:
         else:
             url = Oceano().html(spot=r[0]["cst"])
 
-        if show_harbour:
+        if show_harbour_name:
             self.add(
                 r"""
 \begin{tabular}{|c|c c c c|}\hline
 \multirow{6}{1.8em}{\rotatebox[origin=c]{90}{
-\parbox[c]{1.5cm}{\centering \href{@url@}{@harbor_name@}}}}
+\parbox[c]{1.5cm}{\centering\small \href{@url@}{@harbor_name@}}}}
 & \multicolumn{4}{c|}{@date_ymd@} \\
 \cline{2-5}
 """,
@@ -134,10 +143,10 @@ class Tides:
             tide = {
                 "high": "PM",
                 "low": "BM",
-                "none": "--",                
-            }[tide] 
+                "none": "--",
+            }[tide]
 
-            coeff=coeff or "--"
+            coeff = coeff or "--"
 
             hour = (
                 fix_timezone(hour)
@@ -145,11 +154,11 @@ class Tides:
                 .replace(" CET", r" {\tiny \rotatebox{90}{+1}}")
             )
 
-            sep = "& " if show_harbour else ""
+            sep = "& " if show_harbour_name else ""
 
             self.add(rf"{sep}{tide} & {hour} & {height} m & {coeff} \\")
 
-        if show_harbour:
+        if show_harbour_name:
             self.add(r"\cline{2-5}")
         else:
             self.add(r"\cline{1-4}")
@@ -164,11 +173,12 @@ class Tides:
 
         self.add(r"\hline\end{tabular}")
 
-    def day_multiple(self, harbor, start, days=3):
+    def day_multiple(self, harbor: str, start: datetime, days=3):
         """Crée un tableau avec plusieurs jours consécutifs."""
 
         if isinstance(start, str):
             start = datetime.strptime(start, "%Y-%m-%d")
+            exit(2)
 
         self.add(r"\begin{tabular}{" + "c " * days + "}")
 
@@ -183,6 +193,7 @@ class Tides:
     def plot(self, harbor, date_ymd: datetime, count=1, standalone=False):
         if isinstance(date_ymd, str):
             date_ymd = datetime.strptime(date_ymd, "%Y-%m-%d")
+            exit(2)
 
         if standalone:
             self.lines.clear()
@@ -260,7 +271,7 @@ class Tides:
         if standalone:
             self.add(r"""\end{document}""")
 
-    def nav(self, start, count, stages, landscape=False):
+    def nav(self, start: str, count, stages, landscape=False):
         print(f"nav {start} {count} jours")
 
         start = datetime.strptime(start, "%Y-%m-%d")
