@@ -110,7 +110,7 @@ def parse_epb(block):
             daddr = ipv4_ntoa(ip_header[9])
 
             sport, dport, length, checksum = struct.unpack(">HHHH", data[34:42])
-            if sport == 11101:
+            if sport == 11101 or sport == 2000:
                 logging.debug(f"    UDP {saddr}:{sport} → {daddr}:{dport} length {length}")
                 for line in data[42 : 42 + length - 8].decode().splitlines():
                     print(timestamp, line)
