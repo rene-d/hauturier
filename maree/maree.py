@@ -18,7 +18,7 @@ class Hour:
 
     def new(s):
         """ Initialise une heure à partir d'une chaîne de caractères. """
-        m = re.match(r"^(\d+)[hH](\d+)$", s)
+        m = re.match(r"^(\d+)[hH:](\d+)$", s)
         if not m:
             return None
         hh, mm = int(m[1]), int(m[2])
