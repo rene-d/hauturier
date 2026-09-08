@@ -1,0 +1,32 @@
+# Carnet de marées — configuration
+#
+#   ./nav.py -c config.yaml -o build/nav.pdf --open
+#
+title: Croisière nord
+
+start: 2026-09-10  # date de début, ou "today"
+days: 5             # nombre de jours (ou bien `end: 2026-09-10`)
+columns: 5          # nombre de jours par tableau (>= 5 bascule en paysage)
+
+ports:
+  - Brest
+  - name: ILE D'OUESSANT (BAIE DE LAMPAUL)
+    label: Île d'Ouessant
+  - L'Aber Wrac'h
+  - Roscoff
+  - Trébeurden
+  # créneaux d'ouverture de la porte, et créneaux de passage
+  - gate: Trébeurden
+    label: Porte Trébeurden
+    draft: 2.10          # tirant d'eau ; seuil de passage = 2,80 + 2,10 + 0,40 = 5,30 m
+    clearance: 0.40      # pied de pilote
+  - Perros-Guirec
+  - PORTE PERROS-GUIREC  # seuil basculant du bassin du Linkin
+  - Tréguier
+  - name: Ile de Bréhat (Port Clos)
+    label: Île de Bréhat
+  - Lézardrieux
+  # fuseau déduit du pays annoncé par le site : ces deux-là sont publiés à l'heure
+  # britannique, `timezone:` n'est utile que pour forcer un autre fuseau
+  - SAINT HELIER, JERSEY
+  - SAINT PETER PORT

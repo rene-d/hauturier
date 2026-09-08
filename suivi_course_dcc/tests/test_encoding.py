@@ -45,4 +45,4 @@ def test_espaces_internes_preserves() -> None:
 
 
 def test_extremites_rognees() -> None:
-    assert sanitize_field("  Maeva  ") == "Maeva"
+    assert sanitize_field("  LEON  ") == "LEON"

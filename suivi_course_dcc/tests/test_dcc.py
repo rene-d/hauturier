@@ -24,14 +24,14 @@ def test_entete_six_champs_et_point_virgule_final() -> None:
 
 def test_ligne_concurrent_quatorze_champs() -> None:
     text = dcc.format_dcc(
-        "Pacific Cup", [Competitor("Maeva", "SO410", 7, "R. Devichi")], generated=NOW
+        "Pacific Cup", [Competitor("Pouet", "JPK1050", 7, "Moi")], generated=NOW
     )
     line = text.splitlines()[1]
     assert line.count(";") == dcc.DCC_COMPETITOR_FIELDS[dcc.DCC_VERSION]
     fields = line.split(";")[:-1]
     assert tuple(fields[2:5]) == dcc.COMPETITOR_CONST
     assert fields[7] == "7"
-    assert fields[11] == "R. Devichi"
+    assert fields[11] == "Moi"
 
 
 def test_fins_de_ligne_lf() -> None:
