@@ -28,5 +28,5 @@ ports:
   - Lézardrieux
   # fuseau déduit du pays annoncé par le site : ces deux-là sont publiés à l'heure
   # britannique, `timezone:` n'est utile que pour forcer un autre fuseau
-  - SAINT HELIER, JERSEY
-  - SAINT PETER PORT
+#  - SAINT HELIER, JERSEY
+#  - SAINT PETER PORT

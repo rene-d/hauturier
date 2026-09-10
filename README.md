@@ -10,6 +10,11 @@ Programmes de calcul (en Go, Python) d'une hauteur de marée ou d'une heure de m
 
 Exemples à prendre ici : [Exercices de marée](https://www.loisirs-nautic.fr/exercices-de-maree.php)
 
+## ais
+
+Réception du trafic AIS et carte temps réel des navires alentour (cartes Nav&Co
+hors ligne, OpenStreetMap en secours). Voir [ais/README.md](ais/README.md).
+
 ## gpx/gpxmerge.py
 
 Fusionne plusieurs trajectoires GPX en une seule.

@@ -1,0 +1,177 @@
+/* Habillage sombre par-dessus une carte claire : les panneaux restent lisibles
+   quel que soit le fond (carte marine Nav&Co ou OpenStreetMap). */
+
+:root {
+  --bg: #0f1720ee;
+  --bg-solid: #0f1720;
+  --line: #2a3947;
+  --fg: #e6edf3;
+  --dim: #93a4b3;
+  --accent: #4aa8ff;
+  --warn: #e8722c;
+  --ok: #3fb950;
+  --ko: #d8443c;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif;
+  color: var(--fg);
+}
+
+#map { position: absolute; inset: 0; background: #a9c9e2; }
+
+/* --- panneau latéral ---------------------------------------------------- */
+
+#panel {
+  position: absolute; top: 10px; right: 10px; bottom: 10px; width: 340px;
+  z-index: 900; display: flex; flex-direction: column;
+  background: var(--bg); backdrop-filter: blur(12px);
+  border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 8px 30px #0006; overflow: hidden;
+}
+
+#panel.collapsed { width: 42px; }
+#panel.collapsed #panel-body, #panel.collapsed #status, #panel.collapsed h1 { display: none; }
+#panel.collapsed #collapse { transform: rotate(180deg); }
+
+#panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border-bottom: 1px solid var(--line); flex: none;
+}
+
+#panel-head h1 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .04em; }
+#count { color: var(--accent); font-variant-numeric: tabular-nums; }
+
+#collapse {
+  background: none; border: none; color: var(--dim); cursor: pointer;
+  font-size: 18px; line-height: 1; padding: 0 4px;
+}
+#collapse:hover { color: var(--fg); }
+
+#panel-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+#search {
+  margin: 8px; padding: 6px 8px; flex: none;
+  background: #0008; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px; font: inherit;
+}
+#search:focus { outline: none; border-color: var(--accent); }
+
+#options {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 0 10px 8px;
+  font-size: 11.5px; color: var(--dim); flex: none;
+}
+#options label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+#options label:hover { color: var(--fg); }
+#options .wide { margin-left: auto; }
+#options select {
+  background: #0008; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 4px; font: inherit; padding: 1px 2px;
+}
+
+/* --- liste des cibles --------------------------------------------------- */
+
+#list {
+  flex: 1; overflow-y: auto; display: block;
+  border-collapse: collapse; font-size: 12px;
+}
+#list tbody { display: table; width: 100%; }
+#list tr { cursor: pointer; border-bottom: 1px solid #ffffff0d; }
+#list tr:hover { background: #ffffff10; }
+#list tr.sel { background: #4aa8ff2e; }
+#list tr.stale { opacity: .45; }
+#list td { padding: 3px 6px; white-space: nowrap; overflow: hidden; }
+#list td.name { max-width: 150px; text-overflow: ellipsis; }
+#list td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--dim); }
+#list .mmsi { color: var(--dim); font-size: 10.5px; }
+#list .pip {
+  display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+  margin-right: 5px; vertical-align: -1px;
+}
+
+/* --- barre d'état ------------------------------------------------------- */
+
+#status {
+  flex: none; padding: 6px 10px; border-top: 1px solid var(--line);
+  font-size: 11px; color: var(--dim); display: flex; align-items: center; gap: 6px;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+.dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.dot.off { background: var(--ko); }
+
+/* --- infobulle ---------------------------------------------------------- */
+
+#tip {
+  position: absolute; z-index: 1100; max-width: 430px; max-height: 82vh;
+  overflow-y: auto; padding: 10px 12px;
+  background: var(--bg); backdrop-filter: blur(12px);
+  border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 10px 34px #0008; pointer-events: none;
+  font-size: 12px;
+}
+#tip.pinned { pointer-events: auto; }
+
+#tip h2 {
+  margin: 0 0 2px; font-size: 14px; font-weight: 600;
+  display: flex; align-items: baseline; gap: 6px;
+}
+#tip h2 .sub { font-size: 11px; font-weight: 400; color: var(--dim); }
+#tip .type { color: var(--dim); margin-bottom: 8px; font-size: 11.5px; }
+
+#tip section { margin-top: 8px; }
+#tip section > h3 {
+  margin: 0 0 3px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .09em; color: var(--accent); font-weight: 600;
+}
+#tip dl {
+  margin: 0; display: grid; grid-template-columns: auto 1fr;
+  gap: 1px 10px; align-items: baseline;
+}
+#tip dt { color: var(--dim); white-space: nowrap; }
+#tip dd { margin: 0; font-variant-numeric: tabular-nums; }
+#tip .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+
+#tip details { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
+#tip summary { cursor: pointer; color: var(--dim); font-size: 11px; }
+#tip details dl { margin-top: 4px; font-size: 11px; }
+#tip .hint { color: var(--dim); font-size: 10.5px; margin-top: 8px; font-style: italic; }
+#tip .flag { color: var(--warn); }
+
+/* --- légende ------------------------------------------------------------ */
+
+#legend {
+  position: absolute; left: 10px; bottom: 22px; z-index: 900;
+  padding: 7px 10px; background: var(--bg); backdrop-filter: blur(12px);
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 11px; color: var(--dim);
+  display: flex; flex-wrap: wrap; gap: 3px 12px; max-width: 44vw;
+}
+#legend span { display: flex; align-items: center; gap: 5px; }
+#legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
+/* --- Leaflet ------------------------------------------------------------ */
+
+.leaflet-control-attribution {
+  background: #0f1720cc !important; color: var(--dim) !important; font-size: 10px;
+}
+.leaflet-control-attribution a { color: var(--dim) !important; }
+.leaflet-bar a {
+  background: var(--bg-solid); color: var(--fg); border-bottom-color: var(--line);
+}
+.leaflet-bar a:hover { background: #1b2937; color: #fff; }
+.leaflet-control-layers {
+  background: var(--bg); color: var(--fg); border: 1px solid var(--line);
+}
+.leaflet-control-layers-separator { border-color: var(--line); }
+
+#ais-canvas { position: absolute; inset: 0; z-index: 450; pointer-events: none; }
+#ais-canvas.hidden { opacity: 0; }
+
+@media (max-width: 700px) {
+  #panel { width: auto; left: 10px; }
+  #legend { display: none; }
+  #tip { max-width: 88vw; }
+}

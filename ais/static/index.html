@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Carte AIS</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9B%B4%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/vendor/leaflet.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div id="map"></div>
+
+<aside id="panel">
+  <header id="panel-head">
+    <h1>AIS <span id="count">0</span></h1>
+    <button id="collapse" title="Replier le panneau">›</button>
+  </header>
+
+  <div id="panel-body">
+    <input id="search" type="search" placeholder="nom, MMSI, indicatif, destination…" autocomplete="off">
+
+    <div id="options">
+      <label><input type="checkbox" id="opt-labels" checked> noms</label>
+      <label><input type="checkbox" id="opt-tracks"> traces</label>
+      <label><input type="checkbox" id="opt-moving"> en route</label>
+      <label><input type="checkbox" id="opt-all"> monde entier</label>
+      <label class="wide">vecteur
+        <select id="opt-vector">
+          <option value="0">aucun</option>
+          <option value="3">3 min</option>
+          <option value="6" selected>6 min</option>
+          <option value="12">12 min</option>
+          <option value="30">30 min</option>
+          <option value="60">60 min</option>
+        </select>
+      </label>
+    </div>
+
+    <table id="list"><tbody></tbody></table>
+  </div>
+
+  <footer id="status">
+    <span id="conn" class="dot"></span>
+    <span id="status-text">connexion…</span>
+  </footer>
+</aside>
+
+<div id="tip" hidden></div>
+<div id="legend"></div>
+
+<script src="/vendor/leaflet.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
